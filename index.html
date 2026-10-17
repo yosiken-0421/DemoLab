@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#101c31" />
+  <meta name="description" content="DemoLab | アプリ・Webサイトの試作版を体験できる公開テストスペース" />
+  <title>DemoLab | 試作品を体験しよう</title>
+  <style>
+    :root{font-family:-apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN","Yu Gothic",Meiryo,sans-serif;color-scheme:light;--ink:#182843;--muted:#596b7b;--accent:#147d6c;--bg:#f4f7fb;--line:#dae3ec}
+    *{box-sizing:border-box} body{margin:0;min-height:100vh;background:var(--bg);color:var(--ink)}
+    .hero{padding:62px 20px 74px;background:linear-gradient(135deg,#101c31,#203a57);color:#fff}
+    .wrap{width:min(920px,100%);margin:auto}.eyebrow{font-size:12px;letter-spacing:.2em;color:#7be2c8;font-weight:700}
+    h1{font-size:clamp(40px,8vw,66px);line-height:1.1;margin:15px 0}h2{font-size:23px;margin:0 0 10px}
+    .lead{color:#d1dce5;line-height:1.9;max-width:600px;font-size:15px}.content{padding:35px 20px 80px}
+    .note{color:var(--muted);font-size:14px;line-height:1.8;margin-bottom:20px}
+    .card{display:flex;justify-content:space-between;gap:16px;align-items:center;padding:26px;background:white;border:1px solid var(--line);border-radius:20px;box-shadow:0 9px 30px #0e1c3420}
+    .card p{color:var(--muted);line-height:1.9;margin:0}.tag{display:inline-block;background:#def6ee;color:#086a59;font-size:12px;padding:5px 9px;border-radius:99px;font-weight:700;margin-bottom:10px}
+    .btn{background:var(--accent);display:inline-flex;align-items:center;justify-content:center;gap:8px;text-decoration:none;color:#fff;border-radius:12px;padding:14px 19px;font-weight:700;white-space:nowrap;min-height:46px}
+    .btn:focus-visible{outline:3px solid #f0b547;outline-offset:3px}.foot{font-size:12px;color:var(--muted);padding-top:26px;line-height:1.8}
+    @media(max-width:600px){.hero{padding:45px 20px 58px}.card{flex-direction:column;align-items:stretch}.btn{width:100%}}
+  </style>
+</head>
+<body>
+  <header class="hero"><div class="wrap"><div class="eyebrow">PROJECT PLAYGROUND</div><h1>DemoLab<span style="color:#76dec0">.</span></h1><p class="lead">つくって、試して、もっと使いやすく。<br>アプリやWebサイトの試作品を、ブラウザから気軽に体験できる場所です。</p></div></header>
+  <main class="wrap content"><h2>公開中の試作品</h2><p class="note">動作を確認するための試作品です。正式な業務用サービスではありません。</p>
+    <article class="card"><div><span class="tag">WEB APP · 試作版</span><h2>レシートノート</h2><p>レシートのカメラ読み取り、経費の月別管理、分類の修正、Excel出力をまとめた経費管理アプリ。読み取り精度は実機での検証中です。</p></div><a class="btn" href="./receipt-note/">アプリを試す →</a></article>
+    <p class="foot">保存した経費データはこの端末のブラウザ内に残ります。端末やブラウザを変えると引き継がれません。実際の機密情報や税務保存が必要な領収書での運用は、正式対応まで避けてください。</p>
+  </main>
+</body></html>

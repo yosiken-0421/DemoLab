@@ -1,0 +1,55 @@
+{
+  "expo": {
+    "name": "領収書・経費精算",
+    "slug": "receipt",
+    "scheme": "receipt",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "jp.demolab.receipt",
+      "infoPlist": {
+        "CFBundleDevelopmentRegion": "ja"
+      }
+    },
+    "android": {
+      "package": "jp.demolab.receipt",
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png",
+      "output": "single",
+      "lang": "ja"
+    },
+    "experiments": {
+      "baseUrl": "/DemoLab/keihi"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-sqlite",
+      "expo-sharing",
+      "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "領収書の写真を選ぶために写真ライブラリを使用します。",
+          "cameraPermission": "領収書を撮影するためにカメラを使用します。"
+        }
+      ],
+      [
+        "react-native-document-scanner-plugin",
+        {
+          "cameraPermission": "領収書を撮影するためにカメラを使用します。"
+        }
+      ]
+    ]
+  }
+}

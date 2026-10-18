@@ -11,5 +11,8 @@
   },
   "devDependencies": {
     "tsx": "^4.23.15"
+  },
+  "overrides": {
+    "react-native-gesture-handler": "~3.3.0"
   }
 }

@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # Web版をビルドして GitHub Pages 用のフォルダ（リポジトリ直下）に書き出す。
-#   使い方: scripts/build-web.sh nippo   → ./nippo/ に出力（https://<user>.github.io/DemoLab/nippo/）
+#   使い方: scripts/build-web.sh nippo          → ./nippo/ に出力（https://<user>.github.io/DemoLab/nippo/）
+#           scripts/build-web.sh receipt keihi  → ./keihi/ に出力（app.json の baseUrl と合わせる）
 set -euo pipefail
 APP="$1"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-OUT="$ROOT/$APP"
+OUT="$ROOT/${2:-$APP}"
 cd "$ROOT/apps/$APP"
 rm -rf dist
 EXPO_OFFLINE=1 CI=1 npx expo export -p web --output-dir dist

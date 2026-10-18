@@ -44,6 +44,8 @@
 .camera-dialog .scan-status{font-size:12px;min-height:35px}
 }
 @media(max-height:580px){.camera-dialog .camera-body{padding-top:7px;padding-bottom:7px}.camera-dialog .dialog-header{margin-bottom:5px}.camera-help{margin-top:4px}.camera-dialog .scan-controls button{min-height:42px}}
+
+.camera-dialog #scanUsePartial[hidden]{display:none!important}
 </style>
 </head>
 <body>
@@ -92,12 +94,13 @@
   </form></dialog>
 
   <dialog id="cameraDialog" class="dialog camera-dialog"><div class="dialog-body camera-body">
-    <div class="dialog-header"><div><span class="section-kicker">LIVE CAMERA OCR</span><h2>カメラで読み取る</h2></div><button type="button" class="close-button" data-close="cameraDialog" aria-label="閉じる">×</button></div>
-    <div class="camera-stage" id="cameraStage"><video id="cameraVideo" autoplay muted playsinline></video><div class="scan-frame"><span>領収書をこの枠に収めてください</span></div><button type="button" id="cameraFit" class="camera-fit-button" aria-pressed="false">全体表示</button></div>
+    <div class="dialog-header"><div><span class="section-kicker">HIGH QUALITY CAMERA OCR</span><h2>カメラで読み取る</h2></div><button type="button" class="close-button" data-close="cameraDialog" aria-label="閉じる">×</button></div>
+    <div class="camera-stage fit-whole" id="cameraStage"><video id="cameraVideo" autoplay muted playsinline></video><div class="scan-frame"><span>領収書をこの枠に収めてください</span></div><button type="button" id="cameraFit" class="camera-fit-button" aria-pressed="true">拡大表示</button></div>
     <p id="scanStatus" class="scan-status" role="status">カメラの起動を待っています。</p>
-    <div class="scan-controls"><button class="button button-primary" type="button" id="scanNow">▣ 画面から文字を読み取る</button><button class="button button-outline" type="button" id="toggleAuto">自動スキャン：OFF</button></div>
+    <div class="scan-controls"><button class="button button-primary" type="button" id="scanNow">▣ 高精度で読み取る</button><button class="button button-outline" type="button" id="toggleAuto">自動スキャン：OFF</button></div>
+    <button class="button button-outline" id="scanUsePartial" type="button" hidden style="width:100%;margin-top:6px;flex:0 0 auto">読取候補を確認・手動修正</button>
     <details class="camera-help"><summary>読み取りのヒント・認識結果</summary>
-      <p class="muted fine">文字が画面端で切れる場合は右上の「全体表示」に切り替えてください。画像は一時的に端末のメモリ上で処理し、写真アプリやこのアプリの保存データには残しません。OCRの初回起動時は日本語認識データの取得に通信が必要です。</p>
+      <p class="muted fine">領収書を平らな明るい場所に置き、影と反射を避けて、文字がはっきり見える距離で静止してください。最初は「全体表示」で領収書全体を映します。写真は一時的にメモリで処理し、写真アプリ・保存データには残しません。初回は日本語認識データの取得に通信が必要です。読み取り結果の数字は必ず確認してください。</p>
       <details class="recognition-details"><summary>認識結果の文字を確認する</summary><pre id="rawText">まだ読み取っていません。</pre></details>
     </details>
   </div></dialog>
@@ -176,7 +179,7 @@ const CATEGORIES=['消耗品費','旅費交通費','車両費','通信費','会�
 const $=id=>document.getElementById(id);
 const yen=n=>'¥'+Number(n||0).toLocaleString('ja-JP');
 const now=new Date(),todayLocal=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`};
-let items=readStored(),selectedYear=now.getFullYear(),selectedMonth=now.getMonth()+1,editId=null,stream=null,worker=null,isScanning=false,autoScanTimer=null,autoScan=false,fitFullFrame=false,toastTimer=null;
+let items=readStored(),selectedYear=now.getFullYear(),selectedMonth=now.getMonth()+1,editId=null,stream=null,worker=null,isScanning=false,autoScanTimer=null,autoScan=false,fitFullFrame=true,lastScanCandidate=null,toastTimer=null;
 function readStored(){try{const saved=JSON.parse(localStorage.getItem(KEY)||'[]');return Array.isArray(saved)?saved.filter(validateRecord):[]}catch{return []}}
 function validateRecord(r){return !!(r&&typeof r.id==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(r.date)&&typeof r.store==='string'&&Number.isSafeInteger(r.amount)&&r.amount>=0&&typeof r.category==='string')}
 function persist(){try{localStorage.setItem(KEY,JSON.stringify(items));return true}catch(e){alert('保存できませんでした。ブラウザの空き容量やプライベートブラウズを確認してください。');return false}}
@@ -204,7 +207,7 @@ function moveItem(item,direction,listed){const ix=listed.findIndex(x=>x.id===ite
 const sorted=[...items].sort((a,b)=>(a.order??0)-(b.order??0));let a=sorted.indexOf(item),b=sorted.indexOf(target);
 [sorted[a],sorted[b]]=[sorted[b],sorted[a]];sorted.forEach((r,i)=>r.order=i+1);items=sorted;if(persist()){render();notify('表示順を変更しました（Excel出力にも反映）')}}
 function deleteItem(r){if(!confirm(`${r.date}／${r.store}／${yen(r.amount)} を削除しますか？`))return;const before=items;items=items.filter(x=>x.id!==r.id);if(persist()){render();notify('削除しました')}else items=before}
-function openForm(r,notice=''){$('entryForm').reset();editId=r?.id||null;$('editTitle').textContent=r?'領収書を編集':'領収書を登録';$('entryDate').value=r?.date||todayLocal();$('entryStore').value=r?.store||'';$('entryAmount').value=r?.amount??'';$('entryCategory').value=r?.category||'その他';$('entryTaxRate').value=r?.taxRate??'';$('entryTaxAmount').value=r?.taxAmount??'';$('entryNote').value=r?.note||'';$('ocrNotice').hidden=!notice;$('ocrNotice').textContent=notice;$('editDialog').showModal()}
+function openForm(r,notice=''){$('entryForm').reset();editId=r?.id||null;$('editTitle').textContent=r?'領収書を編集':'領収書を登録';$('entryDate').value=r?r.date||'':todayLocal();$('entryStore').value=r?.store||'';$('entryAmount').value=r?.amount??'';$('entryCategory').value=r?.category||'その他';$('entryTaxRate').value=r?.taxRate??'';$('entryTaxAmount').value=r?.taxAmount??'';$('entryNote').value=r?.note||'';$('ocrNotice').hidden=!notice;$('ocrNotice').textContent=notice;$('editDialog').showModal()}
 function saveForm(e){e.preventDefault();const date=$('entryDate').value,store=$('entryStore').value.trim(),amountNumber=Number($('entryAmount').value);if(!/^\d{4}-\d{2}-\d{2}$/.test(date)||!Number.isSafeInteger(amountNumber)||amountNumber<0||!store||!$('entryAmount').value.trim()){notify('日付・店名・金額を確認してください');return}
 const taxAmountText=$('entryTaxAmount').value.trim(),taxAmount=taxAmountText===''?'':Number(taxAmountText);if(taxAmount!==''&&(!Number.isSafeInteger(taxAmount)||taxAmount<0)){notify('税額は0以上の整数を入力してください');return}
 const record={id:editId||idNew(),date,store,amount:amountNumber,category:$('entryCategory').value,taxRate:$('entryTaxRate').value,taxAmount,note:$('entryNote').value.trim(),order:editId?(items.find(r=>r.id===editId)?.order??items.length+1):Math.max(0,...items.map(x=>Number(x.order)||0))+1,editedAt:new Date().toISOString()};
@@ -217,33 +220,137 @@ function exportExcel(){try{const blob=ReceiptExcel.buildExcel(selectedYear,items
 function backup(){const blob=new Blob([JSON.stringify({app:'receipt-note',version:1,exportedAt:new Date().toISOString(),records:items},null,2)],{type:'application/json'});download(blob,`領収書バックアップ_${todayLocal()}.json`);notify('バックアップを保存しました')}
 async function importBackup(file){if(!file)return;try{if(file.size>5e6)throw new Error('大きすぎるファイルです');const parsed=JSON.parse(await file.text());if(parsed.app!=='receipt-note'||!Array.isArray(parsed.records)||!parsed.records.every(validateRecord))throw new Error('このアプリの有効なバックアップではありません');if(!confirm(`バックアップ${parsed.records.length}件に現在のデータを置き換えますか？`))return;const old=items;items=parsed.records;if(!persist()){items=old;return}render();$('settingsDialog').close();notify(`${items.length}件を復元しました`)}catch(e){alert(`読み込み失敗：${e.message}`)}finally{$('jsonFile').value=''}}
 function demo(){const y=selectedYear,m=String(selectedMonth).padStart(2,'0');const sample=[{date:`${y}-${m}-03`,store:'【サンプル】文房具店',amount:1280,category:'消耗品費',taxRate:'10',taxAmount:'',note:'テスト用'}, {date:`${y}-${m}-08`,store:'【サンプル】ガソリンスタンド',amount:5000,category:'車両費',taxRate:'10',taxAmount:'',note:'テスト用'}, {date:`${y}-${m}-15`,store:'【サンプル】駐車場',amount:800,category:'旅費交通費',taxRate:'10',taxAmount:'',note:'テスト用'}].map((r,i)=>({...r,id:idNew(),order:items.length+i+1,editedAt:new Date().toISOString()}));items.push(...sample);if(persist()){render();$('settingsDialog').close();notify('操作確認用のサンプルを3件追加しました')}}
-async function startCamera(){if(!navigator.mediaDevices?.getUserMedia){notify('カメラはHTTPSのWebページなどで利用できます');return}try{stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:'environment'},width:{ideal:1280},height:{ideal:960}}});const video=$('cameraVideo');video.srcObject=stream;await video.play();$('scanStatus').textContent='領収書を画面に収めて「文字を読み取る」を押してください。';}catch(e){console.error(e);$('scanStatus').textContent='カメラを開始できません。Safariのカメラ権限・HTTPS接続を確認してください。'}}
+async function startCamera(){
+ if(!navigator.mediaDevices?.getUserMedia){notify('カメラはHTTPSのWebページなどで利用できます');return}
+ lastScanCandidate=null;$('scanUsePartial').hidden=true;
+ try{
+  stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:'environment'},width:{ideal:2560},height:{ideal:1920},frameRate:{ideal:30}}});
+  const video=$('cameraVideo');video.srcObject=stream;await video.play();
+  // No unconditional zoom: cropping a receipt removes date/total and reduces actual OCR accuracy.
+  const setting=stream.getVideoTracks()[0]?.getSettings?.()||{};
+  $('scanStatus').textContent=`領収書全体を映し、文字が鮮明になってから押してください。${setting.width?`（映像 ${setting.width}×${setting.height}）`:''}`;
+ }catch(e){console.error(e);$('scanStatus').textContent='カメラを開始できません。Safariのカメラ権限・HTTPS接続を確認してください。'}
+}
 function toggleCameraFit(){fitFullFrame=!fitFullFrame;$('cameraStage').classList.toggle('fit-whole',fitFullFrame);$('cameraFit').textContent=fitFullFrame?'拡大表示':'全体表示';$('cameraFit').setAttribute('aria-pressed',String(fitFullFrame));$('scanStatus').textContent=fitFullFrame?'映像全体を表示しています。文字が読める距離に調整してください。':'大きく表示しています。端が切れる場合は「全体表示」に切り替えてください。'}
 function stopCamera(){autoScan=false;clearInterval(autoScanTimer);autoScanTimer=null;$('toggleAuto').textContent='自動スキャン：OFF';if(stream){stream.getTracks().forEach(t=>t.stop());stream=null}const video=$('cameraVideo');video.pause();video.srcObject=null}
-async function loadTesseract(){if(worker)return worker;
-if(!window.Tesseract){$('scanStatus').textContent='日本語OCRを読み込んでいます（初回は通信が必要）…';await new Promise((resolve,reject)=>{const script=document.createElement('script');script.src='https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';script.onload=resolve;script.onerror=()=>reject(new Error('OCRライブラリを取得できませんでした。ネット接続をご確認ください'));document.head.appendChild(script)})}
-$('scanStatus').textContent='日本語文字認識データの準備中…';worker=await window.Tesseract.createWorker('jpn+eng',1,{logger:m=>{if(m.status&&m.progress!==undefined)$('scanStatus').textContent=`${m.status} ${Math.round(m.progress*100)}%`}});return worker}
-function normalizedDate(s){const nums=s.match(/(20\d{2})\s*[\/\.年\-]\s*(\d{1,2})\s*[\/\.月\-]\s*(\d{1,2})\s*日?/);if(!nums)return null;const [_,y,m,d]=nums;const dt=new Date(Number(y),Number(m)-1,Number(d));if(dt.getFullYear()!==Number(y)||dt.getMonth()+1!==Number(m)||dt.getDate()!==Number(d))return null;return `${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`}
-function extractReceipt(text){const lines=text.replace(/\r/g,'').split('\n').map(t=>t.trim()).filter(Boolean);
-let date='';for(const line of lines){date=normalizedDate(line)||'';if(date)break}
-const sumLabels=/(?:お買[い上]?上?げ?|お支払い|ご請求|現計|合\s*計|総合計|税込計|税込合計|お預り?金額|支払合計|TOTAL|Total)/i;
-const exclude=/(?:お預かり|おつり|釣[銭り]|内税|消費税|税率|外税|小計|値引き|ポイント|お預り額)/;
-const findMoney=line=>{const vals=[...line.matchAll(/(?:[¥￥]\s*)?(-?\d{1,3}(?:,\d{3})+|-?\d{2,7})(?!\d)/g)].map(m=>Number(m[1].replace(/,/g,''))).filter(n=>Number.isSafeInteger(n)&&n>0&&n<100000000);return vals.length?vals[vals.length-1]:null};
-let amount=null;for(let i=lines.length-1;i>=0;i--){if(sumLabels.test(lines[i])&&!exclude.test(lines[i])){const maybe=findMoney(lines[i])??findMoney(lines[i+1]||'');if(maybe!==null){amount=maybe;break}}}
-// Do not guess a grand total if the label was not recognized: human must enter it.
-let store='';for(const line of lines.slice(0,Math.min(lines.length,7))){if(/^(?:20\d{2}|\d{2}[:：]\d{2}|TEL|電話|登録番号|〒|\d{3}-\d{4}|領収書|レシート|No[\.:])/i.test(line))continue;if(line.length>=2&&line.length<=60&&/[ぁ-んァ-ン一-龠A-Za-z]/.test(line)&&!/(合計|消費税|金額|お買|税率)/.test(line)){store=line;break}}
-let rate='';if(/(?:軽減|8\s*%|８\s*％)/.test(text)&&/(?:10\s*%|１０\s*％)/.test(text))rate='mixed';else if(/(?:10\s*%|１０\s*％)/.test(text))rate='10';else if(/(?:8\s*%|８\s*％)/.test(text))rate='8';
-let taxAmount='';const taxLine=lines.find(x=>/(?:消費税額|内消費税|うち消費税)/.test(x));if(taxLine){const n=findMoney(taxLine);if(n!==null)taxAmount=n}
-return {date,store,amount,rate,taxAmount};}
-async function scanFrame(){if(isScanning||!stream)return;const video=$('cameraVideo');if(!video.videoWidth){notify('カメラ映像を準備しています');return}isScanning=true;$('scanNow').disabled=true;try{const canvas=document.createElement('canvas');const stage=$('cameraStage');const stageWidth=stage.clientWidth,stageHeight=stage.clientHeight;let cropWidth=video.videoWidth,cropHeight=video.videoHeight;if(!fitFullFrame&&stageWidth>0&&stageHeight>0){const zoom=Math.max(stageWidth/video.videoWidth,stageHeight/video.videoHeight);cropWidth=Math.min(video.videoWidth,stageWidth/zoom);cropHeight=Math.min(video.videoHeight,stageHeight/zoom)}const scale=Math.min(1,1800/Math.max(cropWidth,cropHeight));canvas.width=Math.max(1,Math.round(cropWidth*scale));canvas.height=Math.max(1,Math.round(cropHeight*scale));const ctx=canvas.getContext('2d',{willReadFrequently:true});ctx.drawImage(video,(video.videoWidth-cropWidth)/2,(video.videoHeight-cropHeight)/2,cropWidth,cropHeight,0,0,canvas.width,canvas.height);const ocr=await loadTesseract();$('scanStatus').textContent='画面内の文字を認識しています…';const result=await ocr.recognize(canvas);canvas.width=0;canvas.height=0;const text=result.data.text||'';$('rawText').textContent=text||'文字が認識できませんでした';if(!text.trim()){notify('文字が見つかりません。明るい場所でもう一度お試しください');return}
-const parsed=extractReceipt(text);if(autoScan&&!parsed.amount){$('scanStatus').textContent='合計金額を認識できません。位置を調整してください。';return}
-stopCamera();$('cameraDialog').close();openForm({date:parsed.date||todayLocal(),store:parsed.store||'',amount:parsed.amount??'',category:'その他',taxRate:parsed.rate,taxAmount:parsed.taxAmount,note:''},`OCRから候補を入力しました。日付・店名・合計金額・税率は誤認識の可能性があるため、必ず領収書と照合してください。${parsed.amount===null?' 合計金額が見つかりませんでした。':''}`);editId=null;
-}catch(e){console.error(e);$('scanStatus').textContent=`読み取りできません：${e.message}`;notify('カメラの読み取りに失敗しました')}finally{isScanning=false;$('scanNow').disabled=false}}
+async function loadTesseract(){
+ if(worker)return worker;
+ if(!window.Tesseract){
+  $('scanStatus').textContent='日本語OCRを読み込んでいます（初回は通信が必要）…';
+  await new Promise((resolve,reject)=>{const script=document.createElement('script');script.src='https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';script.onload=resolve;script.onerror=()=>reject(new Error('OCRライブラリを取得できませんでした。ネット接続をご確認ください'));document.head.appendChild(script)})
+ }
+ $('scanStatus').textContent='日本語文字認識データの準備中…';
+ worker=await window.Tesseract.createWorker('jpn+eng',1,{logger:m=>{if(isScanning&&m.status&&m.progress!==undefined)$('scanStatus').textContent=`${m.status} ${Math.round(m.progress*100)}%`}});
+ await worker.setParameters({tessedit_pageseg_mode:'3',preserve_interword_spaces:'1',user_defined_dpi:'300'});
+ return worker;
+}
+function normalizedDate(s){
+ const a=String(s).normalize('NFKC').match(/(20\d{2})\s*[/\.年\-]\s*(\d{1,2})\s*[/\.月\-]\s*(\d{1,2})\s*日?/);
+ if(!a)return null;
+ const y=Number(a[1]),m=Number(a[2]),d=Number(a[3]);const dt=new Date(y,m-1,d);
+ if(dt.getFullYear()!==y||dt.getMonth()+1!==m||dt.getDate()!==d)return null;
+ return `${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+}
+function extractReceipt(text){
+ const lines=String(text||'').normalize('NFKC').replace(/\r/g,'').split('\n').map(t=>t.replace(/\s+/g,' ').trim()).filter(Boolean);
+ let date='';for(const line of lines){date=normalizedDate(line)||'';if(date)break}
+ // A "total" should be tied to its label; arbitrary receipt prices are not reliable substitutes.
+ const strong=/(?:税込(?:合計|金額)|総合計|お支払(?:い)?(?:金額|合計)?|ご請求(?:金額)?|お買い上げ(?:金額|計)?|お買上(?:金額|計)?|合\s*計|TOTAL|現\s*計)/i;
+ const excluded=/(?:お預かり|お預り|おつり|釣銭|内税|消費税|税率|外税|小計|値引き|ポイント|税抜合計|合計点数)/i;
+ const findMoney=line=>{
+   const cleaned=String(line||'').replace(/(?<=\d)\s+(?=\d{3}(?:\D|$))/g,',');
+   const matches=[...cleaned.matchAll(/(?:[¥￥]\s*)?([0-9]{1,3}(?:[,，][0-9]{3})+|[0-9]{1,8})(?:\s*円)?/g)];
+   const vals=matches.map(x=>Number(x[1].replace(/[,，]/g,''))).filter(n=>Number.isSafeInteger(n)&&n>0&&n<100000000);
+   return vals.length?vals[vals.length-1]:null;
+ };
+ let amount=null;
+ // Prefer the last labeled grand total, but never take a number from another receipt line randomly.
+ for(let i=lines.length-1;i>=0;i--){
+  const line=lines[i];if(!strong.test(line)||excluded.test(line))continue;
+  const labelPos=line.search(strong), tail=line.slice(labelPos).replace(strong,'');
+  const same=findMoney(tail);
+  const next=i+1<lines.length&&!strong.test(lines[i+1])&&!excluded.test(lines[i+1])&&/^(?:[¥￥\d]|金額)/.test(lines[i+1])?findMoney(lines[i+1]):null;
+  const candidate=same??next;
+  if(candidate!==null){amount=candidate;break;}
+ }
+ let store='';for(const line of lines.slice(0,Math.min(lines.length,10))){
+  if(/^(?:20\d{2}|\d{1,2}[:：]\d{2}|TEL|電話|登録番号|〒|\d{3}-\d{4}|領収書|領収証|レシート|No[\.:]|インボイス)/i.test(line))continue;
+  if(line.length>=2&&line.length<=55&&/[ぁ-んァ-ン一-龠A-Za-z]/.test(line)&&!/(合計|消費税|金額|お買|税率|領収|レシート|ありがとう|ご利用)/.test(line)){store=line;break}
+ }
+ const normalized=String(text||'').normalize('NFKC');
+ let rate='';if(/(?:軽減|8\s*%)/.test(normalized)&&/10\s*%/.test(normalized))rate='mixed';else if(/10\s*%/.test(normalized))rate='10';else if(/8\s*%/.test(normalized))rate='8';
+ let taxAmount='';const taxLine=lines.find(x=>/(?:消費税額|内消費税|うち消費税)/.test(x));if(taxLine){const n=findMoney(taxLine);if(n!==null)taxAmount=n}
+ return {date,store,amount,rate,taxAmount};
+}
+function enhancedForOCR(source){
+ // Keep the source untouched; enhancement is a *second* OCR candidate only.
+ const max=1950,ratio=Math.min(1,max/Math.max(source.width,source.height));
+ const out=document.createElement('canvas');out.width=Math.round(source.width*ratio);out.height=Math.round(source.height*ratio);
+ const ctx=out.getContext('2d',{willReadFrequently:true});ctx.drawImage(source,0,0,out.width,out.height);
+ const pixels=ctx.getImageData(0,0,out.width,out.height),data=pixels.data;
+ const histogram=new Uint32Array(256);let sampleCount=0;
+ for(let i=0;i<data.length;i+=32){const n=Math.round(data[i]*.299+data[i+1]*.587+data[i+2]*.114);histogram[n]++;sampleCount++}
+ let count=0,lo=0,hi=255;
+ for(let i=0;i<256;i++){count+=histogram[i];if(count>=sampleCount*.025){lo=i;break}}
+ count=0;for(let i=255;i>=0;i--){count+=histogram[i];if(count>=sampleCount*.025){hi=i;break}}
+ const range=Math.max(65,hi-lo);
+ for(let i=0;i<data.length;i+=4){let v=(data[i]*.299+data[i+1]*.587+data[i+2]*.114-lo)*255/range;v=Math.max(0,Math.min(255,(v-128)*1.12+128));data[i]=data[i+1]=data[i+2]=v}
+ ctx.putImageData(pixels,0,0);return out;
+}
+function candidateScore(c){const p=c.parsed;return (p.amount!==null?7:0)+(p.date?4:0)+(p.store?2:0)+Math.min(3,Math.max(0,(Number(c.confidence)||0)/35))+Math.min(2,c.text.length/200)}
+function useScanCandidate(){if(!lastScanCandidate)return;
+ const {parsed,ambiguous}=lastScanCandidate;
+ stopCamera();$('cameraDialog').close();
+ openForm({date:parsed.date||'',store:parsed.store||'',amount:ambiguous?'':parsed.amount??'',category:'その他',taxRate:parsed.rate,taxAmount:parsed.taxAmount,note:''},
+  `OCRの読み取り候補です。${ambiguous?'合計金額に複数の候補があったため空欄にしました。':''}日付・店名・合計金額・税率は必ず紙の領収書と照合し、間違っていれば修正してください。`);
+ editId=null;
+}
+
+async function scanFrame(){
+ if(isScanning||!stream)return;
+ const video=$('cameraVideo');if(!video.videoWidth||!video.videoHeight){notify('カメラ映像を準備しています');return}
+ isScanning=true;$('scanNow').disabled=true;$('scanUsePartial').hidden=true;lastScanCandidate=null;
+ let original=null,enhanced=null;
+ try{
+  // Capture the *entire camera frame*, never the CSS cover crop, so the totals/date are not discarded.
+  original=document.createElement('canvas');const scale=Math.min(1,2600/Math.max(video.videoWidth,video.videoHeight));
+  original.width=Math.max(1,Math.round(video.videoWidth*scale));original.height=Math.max(1,Math.round(video.videoHeight*scale));
+  original.getContext('2d').drawImage(video,0,0,original.width,original.height);
+  const ocr=await loadTesseract();$('scanStatus').textContent='高解像度画像で読み取り中…（1回目）';
+  await ocr.setParameters({tessedit_pageseg_mode:'3'});
+  const first=await ocr.recognize(original);
+  const candidates=[{text:first.data.text||'',confidence:first.data.confidence||0,parsed:extractReceipt(first.data.text||'')}];
+  const firstP=candidates[0].parsed;
+  if(!firstP.date||!firstP.store||firstP.amount===null||Number(first.data.confidence)<78){
+   $('scanStatus').textContent='文字の濃さを補正して再確認中…（2回目）';
+   enhanced=enhancedForOCR(original);
+   await ocr.setParameters({tessedit_pageseg_mode:'6'});
+   const second=await ocr.recognize(enhanced);
+   candidates.push({text:second.data.text||'',confidence:second.data.confidence||0,parsed:extractReceipt(second.data.text||'')});
+  }
+  candidates.sort((a,b)=>candidateScore(b)-candidateScore(a));
+  const best=candidates[0];const parsed={...best.parsed};
+  for(const other of candidates.slice(1)){if(!parsed.date&&other.parsed.date)parsed.date=other.parsed.date;if(!parsed.store&&other.parsed.store)parsed.store=other.parsed.store;if(parsed.amount===null&&other.parsed.amount!==null)parsed.amount=other.parsed.amount;if(!parsed.rate&&other.parsed.rate)parsed.rate=other.parsed.rate}
+  const seenAmounts=[...new Set(candidates.map(c=>c.parsed.amount).filter(v=>v!==null))];const ambiguous=seenAmounts.length>1;
+  $('rawText').textContent=candidates.map((c,i)=>`【OCR ${i+1}（信頼度 ${Math.round(c.confidence)}%）】\n${c.text||'文字を認識できませんでした'}`).join('\n\n');
+  if(!candidates.some(x=>x.text.trim())){$('scanStatus').textContent='文字が読めません。明るさ・ピント・距離を変えて再度お試しください。';return}
+  lastScanCandidate={parsed,ambiguous};
+  if(!parsed.date||!parsed.store||parsed.amount===null||ambiguous){
+   const missing=[!parsed.date?'日付':null,!parsed.store?'店名':null,parsed.amount===null?'合計':null,ambiguous?'金額候補の不一致':null].filter(Boolean).join('・');
+   $('scanStatus').textContent=`要再確認：${missing}。位置を調整して再読取するか、候補を手動修正してください。`;
+   $('scanUsePartial').hidden=false;
+   return;
+  }
+  // Complete candidates still require the user to check them before saving.
+  useScanCandidate();
+ }catch(e){console.error(e);$('scanStatus').textContent=`読み取りできません：${e.message}`;notify('カメラの読み取りに失敗しました')}
+ finally{if(original){original.width=0;original.height=0}if(enhanced){enhanced.width=0;enhanced.height=0}isScanning=false;$('scanNow').disabled=false}
+}
 function toggleAuto(){autoScan=!autoScan;$('toggleAuto').textContent=`自動スキャン：${autoScan?'ON':'OFF'}`;if(autoScan){$('scanStatus').textContent='約5秒ごとに文字を確認します。十分に鮮明な文字があれば確認画面に進みます。';autoScanTimer=setInterval(()=>{if(!isScanning)scanFrame()},5200);scanFrame()}else{clearInterval(autoScanTimer);autoScanTimer=null}}
 function init(){addOptions($('monthSelect'),Array.from({length:12},(_,i)=>({value:i+1,label:`${i+1}月`})),selectedMonth);addOptions($('categoryFilter'),[{value:'',label:'すべての経費'},...CATEGORIES.map(x=>({value:x,label:x}))],'');addOptions($('entryCategory'),CATEGORIES.map(x=>({value:x,label:x})),'その他');
 $('yearSelect').addEventListener('change',e=>{selectedYear=Number(e.target.value);render()});$('monthSelect').addEventListener('change',e=>{selectedMonth=Number(e.target.value);render()});$('categoryFilter').addEventListener('change',render);$('sortSelect').addEventListener('change',render);
 $('newEntry').addEventListener('click',()=>openForm());$('addFirst').addEventListener('click',()=>openForm());$('entryForm').addEventListener('submit',saveForm);$('exportExcel').addEventListener('click',exportExcel);
-$('cameraLaunch').addEventListener('click',()=>{$('cameraDialog').showModal();startCamera()});$('scanNow').addEventListener('click',scanFrame);$('cameraFit').addEventListener('click',toggleCameraFit);$('toggleAuto').addEventListener('click',toggleAuto);
+$('cameraLaunch').addEventListener('click',()=>{$('cameraDialog').showModal();startCamera()});$('scanNow').addEventListener('click',scanFrame);$('cameraFit').addEventListener('click',toggleCameraFit);$('toggleAuto').addEventListener('click',toggleAuto);$('scanUsePartial').addEventListener('click',useScanCandidate);
 $('openSettings').addEventListener('click',()=>$('settingsDialog').showModal());$('backupJson').addEventListener('click',backup);$('importJson').addEventListener('click',()=>$('jsonFile').click());$('jsonFile').addEventListener('change',e=>importBackup(e.target.files?.[0]));$('loadDemo').addEventListener('click',demo);
 $('clearAll').addEventListener('click',()=>{if(!confirm(`登録した全${items.length}件を完全に削除します。よろしいですか？`))return;const old=items;items=[];if(persist()){render();$('settingsDialog').close();notify('全件削除しました')}else items=old});
 document.querySelectorAll('[data-close]').forEach(el=>el.addEventListener('click',()=>closeDialog(el.dataset.close)));$('cameraDialog').addEventListener('close',stopCamera);

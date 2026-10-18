@@ -1,0 +1,15 @@
+{
+  "name": "demolab",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "test": "tsx --test packages/shared/src/**/*.test.ts apps/*/src/**/*.test.ts",
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  },
+  "devDependencies": {
+    "tsx": "^4.23.15"
+  }
+}

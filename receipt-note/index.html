@@ -46,6 +46,11 @@
 @media(max-height:580px){.camera-dialog .camera-body{padding-top:7px;padding-bottom:7px}.camera-dialog .dialog-header{margin-bottom:5px}.camera-help{margin-top:4px}.camera-dialog .scan-controls button{min-height:42px}}
 
 .camera-dialog #scanUsePartial[hidden]{display:none!important}
+/* Enhanced OCR v3: native still-image camera is preferred when the video frame is undersampled. */
+.camera-dialog .scan-controls{gap:8px}.camera-dialog .scan-controls .button-primary{flex:1}.camera-dialog .scan-controls .button-outline{flex:1}
+.scan-secondary{display:flex;align-items:center;gap:9px;margin:4px 0 2px;flex:0 0 auto}.scan-secondary button{flex:0 0 auto;font-size:11px;min-height:34px;padding:5px 8px}.scan-secondary span{font-size:10px;color:#57747e;line-height:1.35}
+.ocr-preview-holder{background:#e6eced;margin:8px auto;display:grid;place-items:center;max-height:260px;overflow:auto;border-radius:8px}.ocr-preview-holder canvas{max-width:100%;max-height:260px;object-fit:contain}
+@media(max-width:600px){.scan-secondary{gap:6px}.camera-dialog .scan-controls .button{font-size:12px;min-height:48px}}
 </style>
 </head>
 <body>
@@ -97,11 +102,13 @@
     <div class="dialog-header"><div><span class="section-kicker">HIGH QUALITY CAMERA OCR</span><h2>カメラで読み取る</h2></div><button type="button" class="close-button" data-close="cameraDialog" aria-label="閉じる">×</button></div>
     <div class="camera-stage fit-whole" id="cameraStage"><video id="cameraVideo" autoplay muted playsinline></video><div class="scan-frame"><span>領収書をこの枠に収めてください</span></div><button type="button" id="cameraFit" class="camera-fit-button" aria-pressed="true">拡大表示</button></div>
     <p id="scanStatus" class="scan-status" role="status">カメラの起動を待っています。</p>
-    <div class="scan-controls"><button class="button button-primary" type="button" id="scanNow">▣ 高精度で読み取る</button><button class="button button-outline" type="button" id="toggleAuto">自動スキャン：OFF</button></div>
+    <div class="scan-controls"><button class="button button-primary" type="button" id="scanNow">▣ 映像から読み取る</button><button class="button button-outline" type="button" id="highResCapture">◎ 高画質カメラ</button></div>
+    <input id="highResFile" type="file" accept="image/*" capture="environment" hidden>
+    <div class="scan-secondary"><button class="button button-outline" type="button" id="toggleAuto">自動スキャン：OFF</button><span>文字が読めない場合は「高画質カメラ」を使用してください（画像は保存しません）</span></div>
     <button class="button button-outline" id="scanUsePartial" type="button" hidden style="width:100%;margin-top:6px;flex:0 0 auto">読取候補を確認・手動修正</button>
     <details class="camera-help"><summary>読み取りのヒント・認識結果</summary>
-      <p class="muted fine">領収書を平らな明るい場所に置き、影と反射を避けて、文字がはっきり見える距離で静止してください。最初は「全体表示」で領収書全体を映します。写真は一時的にメモリで処理し、写真アプリ・保存データには残しません。初回は日本語認識データの取得に通信が必要です。読み取り結果の数字は必ず確認してください。</p>
-      <details class="recognition-details"><summary>認識結果の文字を確認する</summary><pre id="rawText">まだ読み取っていません。</pre></details>
+      <p class="muted fine">領収書を平らな明るい場所に置き、影と反射を避けて、文字がはっきり見える距離で静止してください。最初は「全体表示」で領収書全体を映します。本アプリは画像を経費記録として保存しません（高画質カメラ起動後のOS側の挙動は端末によります）。初回は日本語認識データの取得に通信が必要です。読み取り結果の数字は必ず確認してください。</p>
+      <details class="recognition-details"><summary>読み取った画像と認識結果を確認する（診断用）</summary><div class="ocr-preview-holder"><canvas id="ocrPreview" width="1" height="1" aria-label="実際にOCRへ渡した画像の確認用表示"></canvas></div><p id="ocrDebug" class="muted"></p><pre id="rawText">まだ読み取っていません。</pre></details>
     </details>
   </div></dialog>
 
@@ -228,7 +235,7 @@ async function startCamera(){
   const video=$('cameraVideo');video.srcObject=stream;await video.play();
   // No unconditional zoom: cropping a receipt removes date/total and reduces actual OCR accuracy.
   const setting=stream.getVideoTracks()[0]?.getSettings?.()||{};
-  $('scanStatus').textContent=`領収書全体を映し、文字が鮮明になってから押してください。${setting.width?`（映像 ${setting.width}×${setting.height}）`:''}`;
+  $('scanStatus').textContent=`映像 ${setting.width||video.videoWidth}×${setting.height||video.videoHeight}。文字が小さい・読み取れないときは「高画質カメラ」を押してください。`;
  }catch(e){console.error(e);$('scanStatus').textContent='カメラを開始できません。Safariのカメラ権限・HTTPS接続を確認してください。'}
 }
 function toggleCameraFit(){fitFullFrame=!fitFullFrame;$('cameraStage').classList.toggle('fit-whole',fitFullFrame);$('cameraFit').textContent=fitFullFrame?'拡大表示':'全体表示';$('cameraFit').setAttribute('aria-pressed',String(fitFullFrame));$('scanStatus').textContent=fitFullFrame?'映像全体を表示しています。文字が読める距離に調整してください。':'大きく表示しています。端が切れる場合は「全体表示」に切り替えてください。'}
@@ -240,7 +247,7 @@ async function loadTesseract(){
   await new Promise((resolve,reject)=>{const script=document.createElement('script');script.src='https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';script.onload=resolve;script.onerror=()=>reject(new Error('OCRライブラリを取得できませんでした。ネット接続をご確認ください'));document.head.appendChild(script)})
  }
  $('scanStatus').textContent='日本語文字認識データの準備中…';
- worker=await window.Tesseract.createWorker('jpn+eng',1,{logger:m=>{if(isScanning&&m.status&&m.progress!==undefined)$('scanStatus').textContent=`${m.status} ${Math.round(m.progress*100)}%`}});
+ worker=await window.Tesseract.createWorker(['jpn','eng'],1,{logger:m=>{if(isScanning&&m.status&&m.progress!==undefined)$('scanStatus').textContent=`${m.status} ${Math.round(m.progress*100)}%`},errorHandler:e=>{console.error('OCR worker error',e);$('scanStatus').textContent='認識エンジンでエラーが発生しました。ページを再読み込みしてください。'}});
  await worker.setParameters({tessedit_pageseg_mode:'3',preserve_interword_spaces:'1',user_defined_dpi:'300'});
  return worker;
 }
@@ -260,8 +267,8 @@ function extractReceipt(text){
  const findMoney=line=>{
    const cleaned=String(line||'').replace(/(?<=\d)\s+(?=\d{3}(?:\D|$))/g,',');
    const matches=[...cleaned.matchAll(/(?:[¥￥]\s*)?([0-9]{1,3}(?:[,，][0-9]{3})+|[0-9]{1,8})(?:\s*円)?/g)];
-   const vals=matches.map(x=>Number(x[1].replace(/[,，]/g,''))).filter(n=>Number.isSafeInteger(n)&&n>0&&n<100000000);
-   return vals.length?vals[vals.length-1]:null;
+   const vals=matches.filter(x=>!/^\s*%/.test(cleaned.slice(x.index+x[0].length))).map(x=>Number(x[1].replace(/[,，]/g,''))).filter(n=>Number.isSafeInteger(n)&&n>0&&n<100000000);
+   return vals.length?vals[0]:null;
  };
  let amount=null;
  // Prefer the last labeled grand total, but never take a number from another receipt line randomly.
@@ -306,54 +313,106 @@ function useScanCandidate(){if(!lastScanCandidate)return;
  editId=null;
 }
 
-async function scanFrame(){
- if(isScanning||!stream)return;
- const video=$('cameraVideo');if(!video.videoWidth||!video.videoHeight){notify('カメラ映像を準備しています');return}
- isScanning=true;$('scanNow').disabled=true;$('scanUsePartial').hidden=true;lastScanCandidate=null;
- let original=null,enhanced=null;
+// Image input never becomes an app record and is not uploaded to a server.
+function clearCapturedImage(){const c=$('ocrPreview');c.width=1;c.height=1;}
+function drawCapturedPreview(canvas){const c=$('ocrPreview'),scale=Math.min(1,550/Math.max(canvas.width,canvas.height));c.width=Math.max(1,Math.round(canvas.width*scale));c.height=Math.max(1,Math.round(canvas.height*scale));c.getContext('2d').drawImage(canvas,0,0,c.width,c.height);}
+function imageToCanvas(img,maxDim){const ratio=Math.min(1,maxDim/Math.max(img.videoWidth||img.naturalWidth||img.width,img.videoHeight||img.naturalHeight||img.height));const c=document.createElement('canvas');c.width=Math.max(1,Math.round((img.videoWidth||img.naturalWidth||img.width)*ratio));c.height=Math.max(1,Math.round((img.videoHeight||img.naturalHeight||img.height)*ratio));c.getContext('2d',{alpha:false}).drawImage(img,0,0,c.width,c.height);return c;}
+function sharpnessMetric(canvas){const scale=Math.min(1,420/Math.max(canvas.width,canvas.height));const w=Math.max(20,Math.floor(canvas.width*scale)),h=Math.max(20,Math.floor(canvas.height*scale));const c=document.createElement('canvas');c.width=w;c.height=h;c.getContext('2d').drawImage(canvas,0,0,w,h);const d=c.getContext('2d').getImageData(0,0,w,h).data;let sum=0,count=0;for(let y=1;y<h-1;y+=2){for(let x=1;x<w-1;x+=2){const i=(y*w+x)*4;const a=d[i]*.299+d[i+1]*.587+d[i+2]*.114;const j=i+4,k=i+w*4;const dx=a-(d[j]*.299+d[j+1]*.587+d[j+2]*.114);const dy=a-(d[k]*.299+d[k+1]*.587+d[k+2]*.114);sum+=dx*dx+dy*dy;count++;}}c.width=0;c.height=0;return sum/Math.max(1,count);}
+async function captureVideoBestFrame(video){
+ // Sample several frames while user holds still; use the sharpest, rather than one arbitrary frame.
+ let best=null,score=-1;
+ for(let i=0;i<3;i++){
+  if(i)await new Promise(resolve=>setTimeout(resolve,160));
+  if(!stream)break;
+  const c=imageToCanvas(video,2880);const candidate=sharpnessMetric(c);
+  if(candidate>score){if(best){best.width=0;best.height=0}best=c;score=candidate;}else{c.width=0;c.height=0}
+ }
+ return {canvas:best,sharpness:score};
+}
+function receiptCentralCrop(source){
+ const c=document.createElement('canvas'),w=source.width,h=source.height;
+ c.width=Math.max(1,Math.round(w*.86));c.height=Math.max(1,Math.round(h*.92));
+ c.getContext('2d',{alpha:false}).drawImage(source,Math.round(w*.07),Math.round(h*.04),Math.round(w*.86),Math.round(h*.92),0,0,c.width,c.height);
+ return c;
+}
+async function recognizeCanvas(source,{mode='video',sharpness=null}={}){
+ if(isScanning||!source)return;
+ isScanning=true;$('scanNow').disabled=true;$('highResCapture').disabled=true;$('scanUsePartial').hidden=true;lastScanCandidate=null;
+ let enhanced=null,cropped=null;
  try{
-  // Capture the *entire camera frame*, never the CSS cover crop, so the totals/date are not discarded.
-  original=document.createElement('canvas');const scale=Math.min(1,2600/Math.max(video.videoWidth,video.videoHeight));
-  original.width=Math.max(1,Math.round(video.videoWidth*scale));original.height=Math.max(1,Math.round(video.videoHeight*scale));
-  original.getContext('2d').drawImage(video,0,0,original.width,original.height);
-  const ocr=await loadTesseract();$('scanStatus').textContent='高解像度画像で読み取り中…（1回目）';
+  drawCapturedPreview(source);
+  $('ocrDebug').textContent=`入力：${source.width}×${source.height}ピクセル／${mode==='still'?'高画質撮影':'動画フレーム'}${sharpness!==null?'／鮮明度指数 '+sharpness.toFixed(0):''}。写真は記録に保存しません。`;
+  if(Math.min(source.width,source.height)<950){$('scanStatus').textContent='カメラ映像の解像度が低いため認識精度が落ちます。高画質カメラがおすすめです。'}
+  const ocr=await loadTesseract();
+  $('scanStatus').textContent='原画像を認識しています（1回目）…';
   await ocr.setParameters({tessedit_pageseg_mode:'3'});
-  const first=await ocr.recognize(original);
+  const first=await ocr.recognize(source);
   const candidates=[{text:first.data.text||'',confidence:first.data.confidence||0,parsed:extractReceipt(first.data.text||'')}];
-  const firstP=candidates[0].parsed;
-  if(!firstP.date||!firstP.store||firstP.amount===null||Number(first.data.confidence)<78){
-   $('scanStatus').textContent='文字の濃さを補正して再確認中…（2回目）';
-   enhanced=enhancedForOCR(original);
+  if(!candidates[0].parsed.date||!candidates[0].parsed.store||candidates[0].parsed.amount===null||Number(first.data.confidence)<80){
+   $('scanStatus').textContent='白黒補正して認識しています（2回目）…';
+   enhanced=enhancedForOCR(source);
    await ocr.setParameters({tessedit_pageseg_mode:'6'});
    const second=await ocr.recognize(enhanced);
    candidates.push({text:second.data.text||'',confidence:second.data.confidence||0,parsed:extractReceipt(second.data.text||'')});
   }
-  candidates.sort((a,b)=>candidateScore(b)-candidateScore(a));
-  const best=candidates[0];const parsed={...best.parsed};
-  for(const other of candidates.slice(1)){if(!parsed.date&&other.parsed.date)parsed.date=other.parsed.date;if(!parsed.store&&other.parsed.store)parsed.store=other.parsed.store;if(parsed.amount===null&&other.parsed.amount!==null)parsed.amount=other.parsed.amount;if(!parsed.rate&&other.parsed.rate)parsed.rate=other.parsed.rate}
-  const seenAmounts=[...new Set(candidates.map(c=>c.parsed.amount).filter(v=>v!==null))];const ambiguous=seenAmounts.length>1;
-  $('rawText').textContent=candidates.map((c,i)=>`【OCR ${i+1}（信頼度 ${Math.round(c.confidence)}%）】\n${c.text||'文字を認識できませんでした'}`).join('\n\n');
-  if(!candidates.some(x=>x.text.trim())){$('scanStatus').textContent='文字が読めません。明るさ・ピント・距離を変えて再度お試しください。';return}
-  lastScanCandidate={parsed,ambiguous};
-  if(!parsed.date||!parsed.store||parsed.amount===null||ambiguous){
-   const missing=[!parsed.date?'日付':null,!parsed.store?'店名':null,parsed.amount===null?'合計':null,ambiguous?'金額候補の不一致':null].filter(Boolean).join('・');
-   $('scanStatus').textContent=`要再確認：${missing}。位置を調整して再読取するか、候補を手動修正してください。`;
-   $('scanUsePartial').hidden=false;
-   return;
+  if(!candidates.some(x=>x.parsed.amount!==null&&x.parsed.date)){
+   $('scanStatus').textContent='領収書の中心を拡大して認識しています（3回目）…';
+   cropped=receiptCentralCrop(source);
+   await ocr.setParameters({tessedit_pageseg_mode:'11'});
+   const third=await ocr.recognize(cropped);
+   candidates.push({text:third.data.text||'',confidence:third.data.confidence||0,parsed:extractReceipt(third.data.text||'')});
   }
-  // Complete candidates still require the user to check them before saving.
+  candidates.sort((a,b)=>candidateScore(b)-candidateScore(a));
+  const best=candidates[0],parsed={...best.parsed};
+  for(const other of candidates.slice(1)){
+   if(!parsed.date&&other.parsed.date)parsed.date=other.parsed.date;
+   if(!parsed.store&&other.parsed.store)parsed.store=other.parsed.store;
+   if(parsed.amount===null&&other.parsed.amount!==null)parsed.amount=other.parsed.amount;
+   if(!parsed.rate&&other.parsed.rate)parsed.rate=other.parsed.rate;
+  }
+  const seenAmounts=[...new Set(candidates.map(c=>c.parsed.amount).filter(v=>v!==null))],ambiguous=seenAmounts.length>1;
+  $('rawText').textContent=candidates.map((c,i)=>`【OCR ${i+1}（信頼度 ${Math.round(c.confidence)}%）】\n${c.text||'文字を認識できませんでした'}`).join('\n\n');
+  lastScanCandidate={parsed,ambiguous};
+  if(!candidates.some(x=>x.text.trim())){$('scanStatus').textContent='文字を認識できませんでした。「高画質カメラ」で写真画質の静止画を読み取ってください。';return;}
+  if(!parsed.date||!parsed.store||parsed.amount===null||ambiguous){
+   const missing=[!parsed.date?'日付':null,!parsed.store?'店名':null,parsed.amount===null?'合計金額':null,ambiguous?'金額候補の不一致':null].filter(Boolean).join('・');
+   $('scanStatus').textContent=`OCRの文字は確認できました。${missing}は未確定です。もう一度読み取るか、候補を手動修正してください。`;
+   $('scanUsePartial').hidden=false;return;
+  }
   useScanCandidate();
- }catch(e){console.error(e);$('scanStatus').textContent=`読み取りできません：${e.message}`;notify('カメラの読み取りに失敗しました')}
- finally{if(original){original.width=0;original.height=0}if(enhanced){enhanced.width=0;enhanced.height=0}isScanning=false;$('scanNow').disabled=false}
+ }catch(e){console.error(e);$('scanStatus').textContent=`読み取りエラー：${e?.message||String(e)}。高画質カメラを試すか、Safariを再読み込みしてください。`;
+ }finally{if(enhanced){enhanced.width=0;enhanced.height=0}if(cropped){cropped.width=0;cropped.height=0}if(source){source.width=0;source.height=0}isScanning=false;$('scanNow').disabled=false;$('highResCapture').disabled=false;}
+}
+async function scanFrame(){
+ if(isScanning||!stream)return;
+ const video=$('cameraVideo');if(!video.videoWidth||!video.videoHeight){notify('カメラ映像を準備しています');return}
+ $('scanStatus').textContent='鮮明なフレームを選択しています…';
+ const result=await captureVideoBestFrame(video);
+ await recognizeCanvas(result.canvas,{sharpness:result.sharpness,mode:'video'});
+}
+async function highResPhoto(file){
+ if(!file)return;
+ if(isScanning)return;
+ if(!file.type.startsWith('image/')){$('scanStatus').textContent='画像形式のファイルを指定してください。';return;}
+ let url=null;
+ try{
+  $('scanStatus').textContent='高画質画像を読み込み中…';
+  url=URL.createObjectURL(file);
+  const img=new Image();img.decoding='async';img.src=url;await new Promise((resolve,reject)=>{img.onload=resolve;img.onerror=()=>reject(new Error('画像が開けません'))});
+  const c=imageToCanvas(img,3200);URL.revokeObjectURL(url);url=null;img.src='';
+  if(!$('cameraDialog').open)$('cameraDialog').showModal();
+  await recognizeCanvas(c,{mode:'still'});
+ }catch(e){$('scanStatus').textContent=`高画質カメラの画像を開けませんでした：${e.message}`;}
+ finally{if(url)URL.revokeObjectURL(url);$('highResFile').value='';}
 }
 function toggleAuto(){autoScan=!autoScan;$('toggleAuto').textContent=`自動スキャン：${autoScan?'ON':'OFF'}`;if(autoScan){$('scanStatus').textContent='約5秒ごとに文字を確認します。十分に鮮明な文字があれば確認画面に進みます。';autoScanTimer=setInterval(()=>{if(!isScanning)scanFrame()},5200);scanFrame()}else{clearInterval(autoScanTimer);autoScanTimer=null}}
 function init(){addOptions($('monthSelect'),Array.from({length:12},(_,i)=>({value:i+1,label:`${i+1}月`})),selectedMonth);addOptions($('categoryFilter'),[{value:'',label:'すべての経費'},...CATEGORIES.map(x=>({value:x,label:x}))],'');addOptions($('entryCategory'),CATEGORIES.map(x=>({value:x,label:x})),'その他');
 $('yearSelect').addEventListener('change',e=>{selectedYear=Number(e.target.value);render()});$('monthSelect').addEventListener('change',e=>{selectedMonth=Number(e.target.value);render()});$('categoryFilter').addEventListener('change',render);$('sortSelect').addEventListener('change',render);
 $('newEntry').addEventListener('click',()=>openForm());$('addFirst').addEventListener('click',()=>openForm());$('entryForm').addEventListener('submit',saveForm);$('exportExcel').addEventListener('click',exportExcel);
-$('cameraLaunch').addEventListener('click',()=>{$('cameraDialog').showModal();startCamera()});$('scanNow').addEventListener('click',scanFrame);$('cameraFit').addEventListener('click',toggleCameraFit);$('toggleAuto').addEventListener('click',toggleAuto);$('scanUsePartial').addEventListener('click',useScanCandidate);
+$('cameraLaunch').addEventListener('click',()=>{$('cameraDialog').showModal();startCamera()});$('scanNow').addEventListener('click',scanFrame);$('highResCapture').addEventListener('click',()=>{stopCamera();$('scanStatus').textContent='高画質カメラを起動しています。撮影後に画像を解析します。';$('highResFile').click()});$('highResFile').addEventListener('cancel',()=>{if($('cameraDialog').open)startCamera()});$('highResFile').addEventListener('change',e=>highResPhoto(e.target.files?.[0]));$('cameraFit').addEventListener('click',toggleCameraFit);$('toggleAuto').addEventListener('click',toggleAuto);$('scanUsePartial').addEventListener('click',useScanCandidate);
 $('openSettings').addEventListener('click',()=>$('settingsDialog').showModal());$('backupJson').addEventListener('click',backup);$('importJson').addEventListener('click',()=>$('jsonFile').click());$('jsonFile').addEventListener('change',e=>importBackup(e.target.files?.[0]));$('loadDemo').addEventListener('click',demo);
 $('clearAll').addEventListener('click',()=>{if(!confirm(`登録した全${items.length}件を完全に削除します。よろしいですか？`))return;const old=items;items=[];if(persist()){render();$('settingsDialog').close();notify('全件削除しました')}else items=old});
-document.querySelectorAll('[data-close]').forEach(el=>el.addEventListener('click',()=>closeDialog(el.dataset.close)));$('cameraDialog').addEventListener('close',stopCamera);
+document.querySelectorAll('[data-close]').forEach(el=>el.addEventListener('click',()=>closeDialog(el.dataset.close)));$('cameraDialog').addEventListener('close',()=>{stopCamera();clearCapturedImage()});
 render()}
 init();
 })();

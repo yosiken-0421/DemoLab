@@ -825,7 +825,123 @@ async function checkSavedPredictions(silent=false){
   }finally{checkingSaved=false;renderSaved();}
 }
 
-function showPicks(el,list){el.innerHTML=list.length?list.map((x,i)=>{const racers=active?.item?.race?.racers||{};const names=x.combo.split("-").map(n=>esc(racers[n]?.name||"未取得")).join(" → ");return '<div class="pick '+(el.id==="mainPicks"?"pick-main":"")+'"><span class="rank">'+(i+1)+'</span><div><div class="combo">'+htmlCombo(x.combo)+'</div><div class="pick-names">'+names+'</div></div><div class="chance">'+pct(x.p,2)+'<span>モデル内推定</span>'+(x.odds!==null&&x.odds!==undefined?'<span>'+Number(x.odds).toFixed(1)+'倍／100円で'+fmt(x.payout100)+'円</span>':'<span>オッズ未取得</span>')+'</div></div>';}).join(""):"指定倍率以上の穴候補はありません。";}
+
+let oddsTicket=0;
+let oddsSnapshot=null;
+let oddsBusy=false;
+const selectedOddsKey=()=>[$('date').value,Number($('stadium').value),Number($('raceNo').value)].join('/');
+const fallbackCsvUrl=(date)=>E.oddsCsvUrl(date).replace(
+  'https://boatracecsv.github.io/data/',
+  'https://cdn.jsdelivr.net/gh/BoatraceCSV/boatracecsv.github.io@main/data/');
+function oddsSnapshotForSelection(){
+  return oddsSnapshot&&oddsSnapshot.key===selectedOddsKey()?oddsSnapshot:null;
+}
+function renderOddsSnapshot(){
+  const snap=oddsSnapshotForSelection(),min=Number($('quickMinOdds').value);
+  const table=$('quickOddsTable');
+  if(!snap?.data?.available){
+    $('quickOddsTag').textContent='未取得';
+    $('quickOddsCount').textContent='該当する買い目：未取得';
+    table.innerHTML='';
+    return;
+  }
+  const data=snap.data;
+  const all=Object.entries(data.odds);
+  // Show all qualifying observed odds; do not create fake numeric values.
+  const matching=all.filter(([k,multiplier])=>multiplier>=min)
+    .sort((a,b)=>a[1]-b[1]||a[0].localeCompare(b[0]));
+  $('quickOddsTag').textContent=data.count+'/120組';
+  $('quickOddsCount').textContent=min+'倍以上：'+matching.length+'組（取得済み'+all.length+'組中）';
+  table.innerHTML=matching.length?
+   '<table><thead><tr><th>組み合わせ</th><th>実際に観測された倍率</th><th>100円あたりの参考額</th></tr></thead><tbody>'+
+   matching.map(([combo,m])=>'<tr><td>'+htmlCombo(combo)+'</td><td>'+Number(m).toFixed(1)+'倍</td><td>'+fmt(Math.round(m*100))+'円</td></tr>').join('')+'</tbody></table>':
+   '<p class="note">取得済みデータには、指定倍率以上の組み合わせがありません。</p>';
+}
+function syncObservedOddsToActive(){
+  const snap=oddsSnapshotForSelection();
+  if(!active||!snap||active.item.date!==$('date').value||
+     active.item.venue!==Number($('stadium').value)||
+     active.item.raceNo!==Number($('raceNo').value))return;
+  const manual=active.manualOdds||{};
+  active.odds={...snap.data.odds,...manual};
+  const time=new Date(snap.data.sourceTime);
+  active.note='実際に観測された3連単オッズ '+snap.data.count+'組／記録日時 '+jstClock(time)+'（JST）'+
+    '。BoatraceCSVの締切約5分前スナップショット。最終確定値ではありません。'+
+    (Object.keys(manual).length?' 手入力'+Object.keys(manual).length+'組を優先。':'');
+  refreshPicks();
+}
+function oddsCsvFetch(date,url){
+  return (async()=>{
+    const controller=new AbortController();
+    const timer=setTimeout(()=>controller.abort(),16000);
+    try{
+      const r=await fetch(url+(url.includes('?')?'&':'?')+'_='+Date.now(),{cache:'no-store',signal:controller.signal});
+      if(!r.ok)throw Error('HTTP '+r.status);
+      return await r.text();
+    }finally{clearTimeout(timer);}
+  })();
+}
+async function fetchObservedOdds({quiet=false}={}){
+  const key=selectedOddsKey(),date=$('date').value;
+  const venue=Number($('stadium').value),raceNo=Number($('raceNo').value);
+  const ticket=++oddsTicket;
+  if(!date||date<E.API_FIRST_DATE||date>simpleDay()){
+    $('quickOddsStatus').textContent='過去または当日の正しい日付を選択してください。';
+    $('quickOddsTag').textContent='未取得';
+    return;
+  }
+  if(oddsBusy&&!quiet)return; // prevents hammering while user clicks repeatedly
+  oddsBusy=true;
+  $('fetchOdds').disabled=true;
+  if(!quiet||!oddsSnapshotForSelection()){
+    $('quickOddsStatus').textContent='3連単の実オッズを取得中…（BoatraceCSV）';
+  }
+  const primary=E.oddsCsvUrl(date),secondary=fallbackCsvUrl(date);
+  let parsed=null,lastError='';
+  try{
+    for(const url of [primary,secondary]){
+      try{
+        const csv=await oddsCsvFetch(date,url);
+        const data=E.csvOddsForRace(csv,date,venue,raceNo);
+        if(data.available){parsed={...data,endpoint:url};break;}
+        // An HTTP 200 with CSV records but no requested race is valid "not yet published".
+        if(!parsed)parsed={...data,endpoint:url};
+      }catch(err){lastError=String(err?.message||err);}
+    }
+    if(ticket!==oddsTicket||key!==selectedOddsKey())return;
+    if(parsed?.available){
+      oddsSnapshot={key,data:parsed,fetchedAt:new Date().toISOString()};
+      $('csvOddsSource').href=primary;
+      const observed=new Date(parsed.sourceTime);
+      const sampleTime=jstClock(observed);
+      const scheduled=selectedDeadline();
+      const isBeforeDeadline=scheduled&&observed.getTime()<=scheduled.getTime();
+      $('quickOddsStatus').textContent='取得成功：'+(labels[venue]||venue)+' '+raceNo+'R／'+
+        parsed.count+'組／オッズ記録 '+date+' '+sampleTime+'（JST）。'+
+        (isBeforeDeadline?'締切予定より前の観測値。':'締切予定との前後関係は未確認。')+
+        ' 配信遅延・倍率変動の可能性があります。公式の最新オッズも確認してください。';
+      renderOddsSnapshot();
+      syncObservedOddsToActive();
+    }else{
+      if(oddsSnapshot?.key!==key)oddsSnapshot=null;
+      $('quickOddsTag').textContent='未取得';
+      $('quickOddsStatus').textContent=parsed?
+        (labels[venue]||venue)+' '+raceNo+'Rのオッズは、CSVにまだ掲載されていません。締切約5分前が目安です。自動再確認・再取得ボタンをご利用ください。':
+        'オッズ通信失敗：'+(lastError||'配信元にアクセスできませんでした。')+'。公式オッズへのリンクから確認してください。';
+      renderOddsSnapshot();
+      if(active&&active.item.date===date&&active.item.venue===venue&&active.item.raceNo===raceNo){
+        active.odds={...(active.manualOdds||{})};
+        active.note=parsed?'このレースの自動オッズは未公開です。実オッズの条件判定はまだできません。':
+          '自動オッズは通信できませんでした。推測倍率は表示しません。';
+        refreshPicks();
+      }
+    }
+  }finally{
+    if(ticket===oddsTicket){oddsBusy=false;$('fetchOdds').disabled=false;}
+  }
+}
+
+function showPicks(el,list){el.innerHTML=list.length?list.map((x,i)=>{const racers=active?.item?.race?.racers||{};const names=x.combo.split("-").map(n=>esc(racers[n]?.name||"未取得")).join(" → ");return '<div class="pick '+(el.id==="mainPicks"?"pick-main":"")+'"><span class="rank">'+(i+1)+'</span><div><div class="combo">'+htmlCombo(x.combo)+'</div><div class="pick-names">'+names+'</div></div><div class="chance">'+pct(x.p,2)+'<span>モデル内推定</span>'+(x.odds!==null&&x.odds!==undefined?'<span>'+Number(x.odds).toFixed(1)+'倍／100円で'+fmt(x.payout100)+'円</span>':'<span>オッズ未取得</span>')+'</div></div>';}).join(""):"倍率を確認できる穴候補はありません。オッズ取得後に再判定します。";}
 function refreshPicks(){
   if(!active)return;
   const minOdds=Number($('minOdds').value);
@@ -834,7 +950,7 @@ function refreshPicks(){
   showPicks($('mainPicks'),res.main);showPicks($('holePicks'),res.hole);
   $('oddsTag').textContent=`${res.oddsCount}/120組`;
   $('oddsStatus').textContent=active.note + '\n' +
-    (res.holeUsesOdds?`穴候補：${minOdds}倍以上の組み合わせをスコア順に抽出（未校正の推定確率×倍率による参考順位）。`:'穴候補：倍率条件に合う取得済みデータがないため、1号艇以外が1着の統計候補を表示。')+
+    (res.holeUsesOdds?`穴候補：取得できた${minOdds}倍以上の組み合わせだけを参考スコア順で表示。`:`穴候補：実オッズで${minOdds}倍以上を確認できる組み合わせがありません（未取得または該当なし）。`)+
     '\nオッズを掛けたスコアは検証済みの期待値や利益見込みではありません。';
   const finalized=E.comboFromResult(active.item.race.result);
   if(finalized){
@@ -847,11 +963,13 @@ $('applyOdds').addEventListener('click',()=>{
   if(!active){setStatus('先にレースの統計予測を実行してください。',true);return;}
   const parsed=E.parseManualOdds($('manualOdds').value);
   if(!parsed.count){setStatus('有効なオッズ入力がありません。例：1-2-3 15.2',true);return;}
+  active.manualOdds={...(active.manualOdds||{}),...parsed.values};
   active.odds={...active.odds,...parsed.values};
   active.note=`手動入力を反映：${parsed.count}組。${parsed.invalid.length?'読み取れない行：'+parsed.invalid.join(', ')+'行。':'入力エラーなし。'} 入力時の倍率であり、締切確定倍率ではありません。`;
+  if(oddsSnapshotForSelection())active.note+=' 自動取得分には手入力を優先します。';
   refreshPicks();setStatus('オッズを反映しました。');
 });
-$('clearOdds').addEventListener('click',()=>{if(!active)return;active.odds={};$('manualOdds').value='';active.note='オッズはクリア済みです。';refreshPicks();});
+$('clearOdds').addEventListener('click',()=>{if(!active)return;active.manualOdds={};active.odds={};$('manualOdds').value='';active.note='画面のオッズをクリアしました。自動再取得で最新の観測値を戻せます。';refreshPicks();});
 function showResults(item,hist,results,success,fail,days){
   const {race,venue,raceNo,date}=item;
   const result=E.predict(race,venue,E.makeStats(hist));
@@ -872,8 +990,9 @@ function showResults(item,hist,results,success,fail,days){
    (result.included.includes('exhibition_time')?' 展示タイム反映済み。':' 展示タイムは未反映です。')+
    (wind!==null?` 直前風速 ${wind}m/s。`: '')+(waves!==null?` 波高 ${waves}cm。`: '') + (result.venueCount < 30 ? ' ※この会場の過去データ件数が少ないため、参考度は低めです。' : '');
   $('officialButtons').innerHTML=`<a href="${officialUrl(date,venue,raceNo,'racelist')}" target="_blank" rel="noopener">公式出走表 ↗</a><a href="${officialUrl(date,venue,raceNo,'odds3t')}" target="_blank" rel="noopener">公式3連単オッズ ↗</a>`;
-  active={item,base:result,display:null,odds:{},note:'オッズ未取得。選択レースの公式オッズをご確認ください。'};updateSaveStatus();
+  active={item,base:result,display:null,odds:{},manualOdds:{},note:'オッズ自動取得を確認しています。'};updateSaveStatus();
   $('manualOdds').value='';refreshPicks();
+  syncObservedOddsToActive();
   $('laneDistribution').innerHTML=result.entries.map(e=>`<div class="rate-row">${laneTag(e.lane)}<div class="track"><div class="fill" style="width:${Math.min(100,result.totalWinByLane[e.lane]*100).toFixed(2)}%"></div></div><div class="rate-num">${pct(result.totalWinByLane[e.lane])}</div></div>`).join('');
   $('historicSummary').innerHTML=`<div class="summary-grid" style="grid-template-columns:1fr 1fr"><div class="metric"><div class="val">${vStats.n ? pct(vStats.positions[0][1]/vStats.n):'—'}</div><div class="label">1コース1着率</div><div class="detail">コース別統計・実測</div></div><div class="metric"><div class="val">${vStats.n ? pct(vStats.upset/vStats.n):'—'}</div><div class="label">1号艇以外の1着率</div><div class="detail">枠番別統計・実測</div></div><div class="metric"><div class="val">${vStats.payouts?pct(vStats.bigPayout/vStats.payouts):'—'}</div><div class="label">3連単1万円以上率</div><div class="detail">払戻確認 ${vStats.payouts}R</div></div><div class="metric"><div class="val">${fmt(vStats.n)}</div><div class="label">集計レース数</div><div class="detail">この会場のみ</div></div></div><p class="note">実測統計は過去${days}日間で取得できた確定結果から集計したものです。1コースと1号艇は進入変更時には異なります。</p>`;
   const sampled=(p,n)=>n?pct(p):'—';

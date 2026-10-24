@@ -69,7 +69,7 @@
 <div id="savedStatus" class="entry-check">保存済みの予想を確認しています…</div><div id="savedList"></div>
 </section>
 <div id="content" class="hidden">
-<section class="panel"><div class="result-row" style="justify-content:space-between"><h2 id="raceTitle" style="margin-bottom:8px"></h2><span id="raceTag" class="small-tag"></span></div><div class="sub" id="raceMeta"></div><div class="summary-grid" id="metrics"></div><div class="tip" id="explain"></div><div class="result-row" id="officialButtons"></div><div class="live-actions"><button type="button" class="primary" id="saveForecast">本命5点＋穴5点を締切前に保存</button><span id="saveStatus" class="help">予想の保存は、締切時刻より前のみ可能です。</span></div></section>
+<section class="panel"><div class="result-row" style="justify-content:space-between"><h2 id="raceTitle" style="margin-bottom:8px"></h2><span id="raceTag" class="small-tag"></span></div><div class="sub" id="raceMeta"></div><div class="summary-grid" id="metrics"></div><div class="tip" id="explain"></div><div class="result-row" id="officialButtons"></div><div class="live-actions"><button type="button" class="primary" id="saveForecast">本命5点＋取得済み穴候補を締切前に保存</button><span id="saveStatus" class="help">予想の保存は、締切時刻より前のみ可能です。</span></div></section>
 <section class="panel" id="oddsPanel"><h2>3連単オッズ比較 <span class="small-tag" id="oddsTag">未取得</span></h2><p class="sub">締切約5分前に記録される非公式オッズを自動取得し、本命5点と穴候補に実倍率を表示します。取得前は推測しません。最終倍率は公式サイトで確認してください。</p>
 <div class="odds-controls"><label for="minOdds">穴候補の最低倍率</label><select id="minOdds"><option value="20">20倍</option><option value="30" selected>30倍</option><option value="50">50倍</option><option value="100">100倍</option></select><button type="button" class="secondary" id="applyOdds">下のオッズを反映</button><button type="button" class="secondary" id="clearOdds">オッズをクリア</button></div>
 <p class="note">自動取得が遅れている場合は、公式オッズを確認して手動入力も可能です。入力形式：1行1組。例：<code>1-2-3 15.2</code>、<code>2-1-3, 40.5</code>。倍率で入力してください。入力されない組み合わせは「未取得」のままです。</p>
@@ -705,7 +705,7 @@ function readForecasts(){
       /^\d{4}-\d\d-\d\d$/.test(r.date)&&Number.isInteger(r.venue)&&r.venue>=1&&r.venue<=24&&
       Number.isInteger(r.raceNo)&&r.raceNo>=1&&r.raceNo<=12&&
       Array.isArray(r.main)&&r.main.length===5&&r.main.every(validCombo)&&
-      Array.isArray(r.hole)&&r.hole.length===5&&r.hole.every(validCombo)):[]; 
+      Array.isArray(r.hole)&&r.hole.length<=5&&r.hole.every(validCombo)):[]; 
   }catch{return [];}
 }
 function writeForecasts(data){
@@ -730,9 +730,9 @@ async function saveCurrentForecast(){
   const expected=predictionId(date,venue,raceNo);
   if(savedForecastForSelected()){setStatus('このレースには保存済みの予想があります。後から上書きはできません。',true);return;}
   const display=active.display||active.base;
-  if(display.main.length!==5||display.hole.length!==5){setStatus('本命と穴の5点が揃っていません。',true);return;}
+  if(display.main.length!==5||display.hole.length>5){setStatus('本命5点が揃っていません。',true);return;}
   const main=display.main.map(x=>x.combo),hole=display.hole.map(x=>x.combo);
-  if(!main.every(validCombo)||!hole.every(validCombo)||new Set([...main,...hole]).size!==10){setStatus('買い目に重複または不正な組み合わせがあります。',true);return;}
+  if(!main.every(validCombo)||!hole.every(validCombo)||new Set([...main,...hole]).size!==5+hole.length){setStatus('買い目に重複または不正な組み合わせがあります。',true);return;}
   const button=$('saveForecast');button.disabled=true;
   $('saveStatus').textContent='当日の出走表と締切を再確認しています…';
   try{
@@ -890,7 +890,6 @@ async function fetchObservedOdds({quiet=false}={}){
     $('quickOddsTag').textContent='未取得';
     return;
   }
-  if(oddsBusy&&!quiet)return; // prevents hammering while user clicks repeatedly
   oddsBusy=true;
   $('fetchOdds').disabled=true;
   if(!quiet||!oddsSnapshotForSelection()){
@@ -958,7 +957,11 @@ function refreshPicks(){
     $('settledBody').innerHTML=`<div class="result-row"><strong>${htmlCombo(finalized.key)}</strong><span>3連単払戻：${finalized.amount===null?'不明':fmt(finalized.amount)+'円'}</span><span class="small-tag ${hitMain?'':'pill-warn'}">${hitMain?'本命5点内':hitHole?'穴候補内':'上位候補外'}</span></div><p class="note">過去レースの回顧表示です。レース後に取得されたオッズを予測時点の情報とは扱っていません。</p>`;
   }
 }
-$('minOdds').addEventListener('change',refreshPicks);
+$('minOdds').addEventListener('change',()=>{$('quickMinOdds').value=$('minOdds').value;renderOddsSnapshot();refreshPicks();});
+$('quickMinOdds').addEventListener('change',()=>{$('minOdds').value=$('quickMinOdds').value;renderOddsSnapshot();refreshPicks();});
+$('fetchOdds').addEventListener('click',()=>fetchObservedOdds().catch(e=>{
+ $('quickOddsStatus').textContent='実オッズの取得失敗：'+(e?.message||'通信エラー');
+}));
 $('applyOdds').addEventListener('click',()=>{
   if(!active){setStatus('先にレースの統計予測を実行してください。',true);return;}
   const parsed=E.parseManualOdds($('manualOdds').value);
@@ -1055,6 +1058,7 @@ async function launch(){
   if(currentRun)currentRun.abort();
   const d=$('date').value,venue=Number($('stadium').value),raceNo=Number($('raceNo').value),days=Number($('days').value);
   if(!d||d<E.API_FIRST_DATE||d>($('date').max)){setStatus('2026年1月1日〜本日の範囲で日付を選択してください。',true);return;}
+  fetchObservedOdds({quiet:true}).catch(()=>{});
   currentRun=new AbortController();const signal=currentRun.signal;
   active=null;latestValidation=null;$('exportAudit').disabled=true;updateSaveStatus();$('content').classList.add('hidden');setBusy(true);setProgress(0,1);setStatus('選択日の出走表を取得しています…');
   try{
@@ -1085,18 +1089,8 @@ async function launch(){
     history.sort((a,b)=>a.date.localeCompare(b.date));
     showResults(chosen,history,null,ok,failed,dates.length);
     setStatus(`分析完了｜過去確定 ${fmt(history.length)}レース、${ok}日取得。`);
-    if (d < new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Tokyo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date())) {
-      try {
-        const odoc=await fetchJson(d,signal,E.historicalOddsUrl(d));
-        if(signal.aborted)return;
-        const odds=E.oddsFromDocument(odoc,venue,raceNo);
-        if(Object.keys(odds).length){
-          active.odds=odds;
-          active.note=`過去レースの翌日公開オッズ：${Object.keys(odds).length}組。取得時刻不明。レース前の取得値ではありません。`;
-          refreshPicks();setStatus(`予測・過去オッズの取得完了（${Object.keys(odds).length}組）。`);
-        } else {active.note='過去オッズAPIに対象レースの3連単がありません。手入力で補完できます。';refreshPicks();}
-      } catch(e){if(!signal.aborted){active.note=`過去オッズの自動取得不可（${e?.message||'通信エラー'}）。手入力で補完できます。`;refreshPicks();}}
-    }else if(active){active.note='当日のオッズは自動取得していません。公式3連単オッズを確認し、必要な組み合わせを手動入力してください。';refreshPicks();}
+    await fetchObservedOdds({quiet:true});
+    if(signal.aborted)return;
   }catch(err){ if(signal.aborted){setStatus('取得を中止しました。');}else{setStatus(`取得または分析に失敗しました：${err?.message||'不明なエラー'}\nネット接続とデータの公開状況を確認してください。`,true);}}
   finally{if(currentRun?.signal===signal)currentRun=null;setBusy(false);}
 }
@@ -1164,9 +1158,25 @@ window.addEventListener('focus',()=>{checkSavedPredictions(true).catch(()=>{});}
 
 $('go').addEventListener('click',launch);
 $('checkEntries').addEventListener('click',()=>loadRaceCard(false,true));
-['date','stadium','raceNo'].forEach(id=>$(id).addEventListener('change',()=>{if(id==='stadium')syncLive();loadRaceCard();}));
+['date','stadium','raceNo'].forEach(id=>$(id).addEventListener('change',()=>{
+  if(id==='stadium')syncLive();
+  $('quickOfficialOdds').href=officialUrl($('date').value,Number($('stadium').value),Number($('raceNo').value),'odds3t');
+  oddsTicket++;oddsSnapshot=null;renderOddsSnapshot();
+  loadRaceCard();
+  fetchObservedOdds().catch(e=>{$('quickOddsStatus').textContent=String(e?.message||e);});
+}));
+$('quickOfficialOdds').href=officialUrl($('date').value,Number($('stadium').value),Number($('raceNo').value),'odds3t');
 syncLive();
 loadRaceCard(true);
+fetchObservedOdds({quiet:true}).catch(()=>{});
+setInterval(()=>{
+  if($('date').value!==simpleDay())return;
+  const scheduled=selectedDeadline();
+  if(scheduled && Date.now()-scheduled.getTime()<15*60*1000 &&
+     scheduled.getTime()-Date.now()<50*60*1000){
+    fetchObservedOdds({quiet:true}).catch(()=>{});
+  }
+},90000);
 $('cancel').addEventListener('click',()=>{currentRun?.abort();});
 })();
 </script>

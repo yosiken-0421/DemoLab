@@ -117,6 +117,60 @@
     const race = doc?.programs?.stadiums?.[String(venue)]?.races?.[String(raceNo)];
     return normalizeOdds(race?.odds?.trifecta);
   }
+
+  // BoatraceCSV: 5-minute-predeadline observation, NOT continuous real-time odds.
+  function oddsCsvUrl(date){
+    const parts=String(date).split('-');
+    if(parts.length!==3||parts.some(x=>!/^\d+$/.test(x)))throw Error('不正な日付');
+    return 'https://boatracecsv.github.io/data/previews/od3/'+parts[0]+'/'+parts[1]+'/'+parts[2]+'.csv';
+  }
+  function splitCsvLine(line){
+    const output=[];let buffer='',quoted=false;
+    for(let i=0;i<line.length;i++){
+      const c=line[i];
+      if(c==='"'){
+        if(quoted&&line[i+1]==='"'){buffer+='"';i++;}
+        else quoted=!quoted;
+      }else if(c===','&&!quoted){output.push(buffer);buffer='';}
+      else buffer+=c;
+    }
+    output.push(buffer);
+    return output;
+  }
+  function csvOddsForRace(csv,date,venue,raceNo){
+    const headerLine=String(csv).replace(/^\uFEFF/,'').split(/\r?\n/);
+    if(!headerLine.length||!headerLine[0])throw Error('オッズCSVの中身が空です');
+    const headers=splitCsvLine(headerLine[0]);
+    const dateKey=String(date).replaceAll('-','');
+    const code=dateKey+String(venue).padStart(2,'0')+String(raceNo).padStart(2,'0');
+    const indices=Object.fromEntries(headers.map((name,i)=>[name,i]));
+    for(const name of ['レースコード','レース日','レース場','レース回','締切時刻','取得日時']){
+      if(!Number.isInteger(indices[name]))throw Error('CSV必須項目なし：'+name);
+    }
+    const matched=headerLine.slice(1).map(l=>l.trim()).filter(Boolean).map(splitCsvLine).filter(cols=>
+      cols[indices['レースコード']]===code &&
+      cols[indices['レース日']]===date &&
+      Number(cols[indices['レース場']])===Number(venue) &&
+      Number.parseInt(cols[indices['レース回']],10)===Number(raceNo));
+    if(!matched.length)return {available:false,odds:{},count:0,sourceTime:null,deadline:null,url:oddsCsvUrl(date)};
+    const row=matched.reduce((a,b)=>String(a[indices['取得日時']])>=String(b[indices['取得日時']])?a:b);
+    const observed=row[indices['取得日時']];
+    const timestamp=Date.parse(observed);
+    if(!Number.isFinite(timestamp)||!observed.startsWith(date+'T'))throw Error('オッズ取得日時が開催日と一致しません');
+    const odds={};
+    for(let a=1;a<=6;a++)for(let b=1;b<=6;b++)for(let c=1;c<=6;c++){
+      if(a===b||a===c||b===c)continue;
+      const key=a+'-'+b+'-'+c,ix=indices['3連単_'+key];
+      if(ix===undefined)continue;
+      const raw=String(row[ix]??'').trim();
+      // 0 is unsold, not an actionable odds multiplier.
+      const rate=/^\d+(?:\.\d+)?$/.test(raw)?Number(raw):NaN;
+      if(Number.isFinite(rate)&&rate>=1&&rate<1e7)odds[key]=rate;
+    }
+    return {available:Object.keys(odds).length>0,odds,count:Object.keys(odds).length,
+      sourceTime:observed,deadline:row[indices['締切時刻']],url:oddsCsvUrl(date)};
+  }
+
   function normalizeOdds(trifecta) {
     const out = {};
     if (!trifecta || typeof trifecta !== 'object') return out;
@@ -151,12 +205,13 @@
       return { ...c, odds, payout100: odds === null ? null : Math.round(odds * 100), proxy:odds === null ? null : c.p * odds };
     });
     const main = pred.main.map(x => mapped.find(c=>c.combo===x.combo));
-    const qualified = mapped.filter(x=>x.first!==1 && !main.some(y=>y.combo===x.combo) && x.odds!==null && x.odds>=minOdds);
+    // Real-observed multipliers only. Do not invent a "30x hole" from model ranking.
+    // An outside favourite with a 30x multiplier can be 1-lane first too.
+    const qualified = mapped.filter(x=>!main.some(y=>y.combo===x.combo)&&x.odds!==null&&x.odds>=minOdds);
     qualified.sort((a,b)=>b.proxy-a.proxy);
-    return { ...pred, candidates:mapped, main,
-      hole: qualified.length ? qualified.slice(0,5) : pred.hole.map(x=>mapped.find(c=>c.combo===x.combo)),
+    return {...pred,candidates:mapped,main,hole:qualified.slice(0,5),
       oddsCount:Object.keys(oddsMap).length,
-      holeUsesOdds:qualified.length>0, minOdds };
+      holeUsesOdds:qualified.length>0,minOdds};
   }
 
   function racesFromDocument(doc) {
@@ -419,7 +474,7 @@
       training:train.length,trainingDays:split,testDays:days.length-split,auditRows};
   }
   root.BoatEngine = { API_FIRST_DATE, datePlus, historyDates, apiUrl,
-    historicalOddsUrl, oddsFromDocument, normalizeOdds, parseManualOdds, attachOdds,
+    historicalOddsUrl, oddsFromDocument, normalizeOdds, parseManualOdds, attachOdds, oddsCsvUrl, csvOddsForRace, splitCsvLine,
     racesFromDocument, comboFromResult,
     extractHistory, makeStats, makeRacerHistory, racerPersonalStats, personalAdjust, positionPrior, predict, validation, preRaceFields, nval };
   if (typeof module !== 'undefined' && module.exports) module.exports = root.BoatEngine;

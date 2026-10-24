@@ -9,8 +9,9 @@
 <style>
 :root{color-scheme:dark;--bg:#081426;--panel:#11233a;--panel2:#162b43;--line:#2a3c54;--text:#edf6ff;--muted:#a9bed2;--aqua:#63e5d1;--blue:#88bbff;--warn:#ffd384;--red:#ff9f99;--radius:18px}
 *{box-sizing:border-box}body{margin:0;background:radial-gradient(900px 500px at 4% 0%,#14334c 0%,transparent 70%),var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN","Noto Sans JP",sans-serif;line-height:1.52}button,input,select{font:inherit}a{color:#93deee}a:hover{text-decoration:none}.wrap{max-width:1090px;padding:20px 17px 64px;margin:auto}.header{display:flex;align-items:center;justify-content:space-between;gap:15px;padding:10px 0 24px}.brand{display:flex;gap:12px;align-items:center}.logo{width:45px;height:45px;border-radius:14px;background:linear-gradient(135deg,#68e6d5,#4e88ff);display:grid;place-items:center;color:#091426;font-size:24px;font-weight:900;box-shadow:0 0 30px #2fadb247}.brand-name{font-weight:900;letter-spacing:.1em;font-size:20px}.brand-sub,.source-line{font-size:11px;color:var(--muted)}.source-line{text-align:right}.source-line a{display:block}.hero{padding:8px 0 24px}.eyebrow{font-size:11px;font-weight:800;letter-spacing:.15em;color:var(--aqua)}h1{line-height:1.28;margin:10px 0;font-size:clamp(25px,5.2vw,40px);letter-spacing:-.03em}.intro{color:var(--muted);margin:8px 0;max-width:760px;font-size:14px}.panel{background:linear-gradient(135deg,var(--panel),#0e1d31);border:1px solid var(--line);border-radius:var(--radius);padding:21px;margin-top:16px;box-shadow:0 14px 30px #00000010}h2{font-size:18px;margin:0 0 14px}h3{font-size:15px;margin:0 0 12px}.sub{font-size:12px;color:var(--muted);margin:-6px 0 14px}.control-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.field label{display:block;color:var(--muted);font-size:12px;font-weight:750;margin:0 0 6px}.field input,.field select{width:100%;background:#09192c;color:#edf6ff;border:1px solid #38516c;border-radius:10px;height:44px;padding:0 12px;outline-color:var(--aqua)}.action-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:17px}.primary{cursor:pointer;border:0;background:var(--aqua);color:#0a2830;padding:13px 26px;border-radius:11px;font-weight:900;min-height:45px}.primary:disabled{opacity:.55;cursor:not-allowed}.secondary{cursor:pointer;background:transparent;border:1px solid #52718d;color:var(--text);border-radius:10px;padding:11px 16px;min-height:45px}.secondary:disabled{opacity:.4}.help{font-size:12px;color:var(--muted)}#status{padding:12px 14px;background:#102a3b;border-radius:11px;margin-top:16px;font-size:13px;white-space:pre-line;display:none;border:1px solid #24536a}#status.error{background:#3a2028;border-color:#804451;color:#ffd9d7}#progress{width:100%;height:5px;background:#28435b;overflow:hidden;border-radius:30px;display:none;margin:10px 0 0}#bar{height:100%;width:0;background:var(--aqua);transition:width .2s}.summary-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:12px}.metric{padding:16px;border:1px solid var(--line);background:#0b1b2d;border-radius:13px;min-height:100px}.metric .val{font-size:26px;font-weight:900;letter-spacing:-.04em;line-height:1.2}.metric .label{font-size:12px;color:var(--muted);margin-top:7px}.metric .detail{font-size:11px;color:var(--muted);margin-top:5px}.two{display:grid;grid-template-columns:1fr 1fr;gap:14px}.tip{font-size:12px;background:#162b43;border-left:3px solid #63e5d1;padding:11px 13px;border-radius:0 9px 9px 0;margin:12px 0}.picklist{display:grid;gap:8px}.pick{display:grid;grid-template-columns:32px minmax(0,1fr) 92px;align-items:center;gap:10px;background:#0a1a2b;border:1px solid #294057;border-radius:12px;padding:11px}.pick .rank{font-size:12px;color:var(--muted);text-align:center}.combo{display:flex;align-items:center;gap:6px;flex-wrap:wrap}.lane{width:29px;height:29px;display:inline-grid;place-items:center;border-radius:8px;font-weight:850;font-size:15px;border:1px solid #ffffff22}.lane1{background:#f2f5f9;color:#162233}.lane2{background:#171d29;color:white;border-color:#637189}.lane3{background:#e94252;color:white}.lane4{background:#2767eb;color:white}.lane5{background:#f0c53d;color:#272210}.lane6{background:#47b572;color:#071a12}.dash{opacity:.7;color:#adc2d0}.chance{text-align:right;font-weight:900;font-variant-numeric:tabular-nums}.chance span{display:block;font-size:10px;font-weight:500;color:var(--muted)}.pick-main:first-child{border-color:#5c998f;background:#15353e}.note{font-size:12px;color:var(--muted);margin:10px 0 0}.sailor-table{overflow:auto}.sailor-table table{width:100%;border-collapse:collapse;font-size:12px;white-space:nowrap}.sailor-table th{text-align:right;color:var(--muted);font-weight:600;border-bottom:1px solid var(--line);padding:9px}.sailor-table td{text-align:right;padding:10px 9px;border-bottom:1px solid #1d3549}.sailor-table th:nth-child(-n+2),.sailor-table td:nth-child(-n+2){text-align:left}.sailor-table .lane{width:25px;height:25px;border-radius:6px;font-size:12px}.rate-row{display:grid;grid-template-columns:30px 1fr 54px;align-items:center;gap:9px;margin:8px 0}.track{height:10px;border-radius:25px;background:#283c51;overflow:hidden}.fill{height:100%;background:linear-gradient(90deg,#3975dc,#71e3cf);border-radius:22px}.rate-num{font-size:12px;color:var(--muted);text-align:right;font-variant-numeric:tabular-nums}.small-tag{font-size:11px;background:#274755;color:#adf3df;padding:3px 8px;border-radius:20px;font-weight:800;display:inline-block}.pill-warn{background:#62402b;color:#ffde9b}.pill-red{background:#72363d;color:#ffc0b6}.odds-input{width:100%;min-height:92px;background:#09192c;color:#edf6ff;border:1px solid #38516c;border-radius:10px;padding:10px;font:13px ui-monospace,SFMono-Regular,Menlo,monospace;resize:vertical}.odds-note{font-size:12px;color:#b9cedf;white-space:pre-line}.odds-controls{display:flex;align-items:center;gap:9px;flex-wrap:wrap}.odds-controls select{height:40px;background:#09192c;color:#edf6ff;border:1px solid #38516c;border-radius:10px;padding:0 8px}.footnotes{font-size:12px;color:var(--muted);padding:12px 4px}.footnotes p{margin:8px 0}.hidden{display:none!important}.now{color:var(--aqua);font-weight:700}.disclaimer{font-size:12px;color:#b5c9da;border:1px dashed #526d84;padding:13px;border-radius:11px;background:#12253b}.result-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.loader{display:inline-block;vertical-align:middle;width:12px;height:12px;border:2px solid #28495f;border-top-color:#9af7e5;border-radius:50%;animation:spin .8s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}
+.entry-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}.entry-card{padding:12px;border:1px solid #37526a;background:#091a2c;border-radius:12px;min-width:0}.entry-head{display:flex;gap:8px;align-items:center}.entry-name{font-size:15px;font-weight:800;overflow-wrap:anywhere}.entry-info{font-size:12px;color:#aac6d9;margin-top:8px}.entry-check{padding:12px;border-radius:10px;background:#102a3b;color:#c3f4eb;font-size:13px;margin-bottom:12px;border:1px solid #37647a}.entry-check.warning{background:#3a2730;color:#ffd2cc;border-color:#905568}.pick-names{font-size:11px;color:#afcbdc;margin-top:5px;overflow-wrap:anywhere}.data-source{font-size:12px;color:#b5cad7;margin-top:8px}
 @media(max-width:850px){.summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.two{grid-template-columns:1fr}}
-@media(max-width:570px){.wrap{padding:14px 12px 48px}.header{padding:4px 0 20px}.source-line{display:none}.brand-name{font-size:18px}.control-grid{grid-template-columns:1fr 1fr}.panel{padding:15px;margin-top:12px}h2{font-size:16px}.metric .val{font-size:23px}.pick{grid-template-columns:23px minmax(0,1fr) 68px;gap:6px;padding:10px 7px}.lane{width:27px;height:27px;border-radius:7px}.summary-grid{gap:8px}.metric{padding:12px;min-height:88px}}
+@media(max-width:570px){.entry-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.entry-card{padding:10px}.entry-name{font-size:14px}.wrap{padding:14px 12px 48px}.header{padding:4px 0 20px}.source-line{display:none}.brand-name{font-size:18px}.control-grid{grid-template-columns:1fr 1fr}.panel{padding:15px;margin-top:12px}h2{font-size:16px}.metric .val{font-size:23px}.pick{grid-template-columns:23px minmax(0,1fr) 68px;gap:6px;padding:10px 7px}.lane{width:27px;height:27px;border-radius:7px}.summary-grid{gap:8px}.metric{padding:12px;min-height:88px}}
 </style>
 </head>
 <body>
@@ -22,7 +23,14 @@
 <div class="field"><label for="stadium">レース場</label><select id="stadium"></select></div>
 <div class="field"><label for="raceNo">レース</label><select id="raceNo"></select></div>
 <div class="field"><label for="days">過去成績の対象</label><select id="days"><option value="14">直前14日間</option><option value="30" selected>直前30日間</option><option value="60">直前60日間</option><option value="90">直前90日間</option></select></div>
-</div><div class="action-row"><button class="primary" id="go" type="button">統計を取得して予測</button><button class="secondary" id="cancel" type="button" disabled>中止</button><span class="help">無料・会員登録なし・投票機能なし</span></div><div id="status" role="status" aria-live="polite"></div><div id="progress"><div id="bar"></div></div></section>
+</div><div class="action-row"><button class="primary" id="go" type="button">統計を取得して予測</button><button class="secondary" id="checkEntries" type="button">出走表・レーサー確認</button><button class="secondary" id="cancel" type="button" disabled>中止</button><span class="help">無料・会員登録なし・投票機能なし</span></div><div id="status" role="status" aria-live="polite"></div><div id="progress"><div id="bar"></div></div></section>
+<section class="panel" id="entryPreview" aria-label="出走選手の確認">
+<div class="result-row" style="justify-content:space-between"><h2 style="margin-bottom:4px">選択レースの出走選手</h2><span class="small-tag" id="entryTag">確認中</span></div>
+<p class="sub">非公式APIの選手名・登録番号・級別を表示。分析前に当日データか確認できます。</p>
+<div id="entryCheck" class="entry-check">出走表を取得しています…</div>
+<div class="entry-grid" id="entryGrid"></div>
+<div class="data-source" id="entrySource"></div>
+</section>
 <div id="content" class="hidden">
 <section class="panel"><div class="result-row" style="justify-content:space-between"><h2 id="raceTitle" style="margin-bottom:8px"></h2><span id="raceTag" class="small-tag"></span></div><div class="sub" id="raceMeta"></div><div class="summary-grid" id="metrics"></div><div class="tip" id="explain"></div><div class="result-row" id="officialButtons"></div></section>
 <section class="panel" id="oddsPanel"><h2>3連単オッズ比較 <span class="small-tag" id="oddsTag">未取得</span></h2><p class="sub">過去レースの公開オッズは自動取得を試行。当日分は公式の3連単オッズを手動で反映します。締切までオッズは変動します。</p>
@@ -332,7 +340,64 @@ const laneTag = n => `<span class="lane lane${n}">${n}</span>`;
 const htmlCombo = c => String(c).split('-').map(n=>laneTag(Number(n))).join('<span class="dash">–</span>');
 const nowLabel = race => race?.result && E.comboFromResult(race.result) ? '確定結果あり' : race?.preview ? '直前情報あり' : '出走表データ';
 const officialUrl = (date,venue,raceNo,endpoint) => `https://www.boatrace.jp/owpc/pc/race/${endpoint}?rno=${raceNo}&jcd=${String(venue).padStart(2,'0')}&hd=${date.replaceAll('-','')}`;
-function showPicks(el,list){el.innerHTML=list.length?list.map((x,i)=>`<div class="pick ${el.id==='mainPicks'?'pick-main':''}"><span class="rank">${i+1}</span><div class="combo">${htmlCombo(x.combo)}</div><div class="chance">${pct(x.p,2)}<span>モデル内推定</span>${x.odds!==null && x.odds!==undefined?`<span>${Number(x.odds).toFixed(1)}倍／100円で${fmt(x.payout100)}円</span>`:'<span>オッズ未取得</span>'}</div></div>`).join(''):'指定倍率以上の穴候補はありません。';}
+
+let cachedDay=null, entryTicket=0;
+const jstNow=()=>new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Tokyo',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'}).format(new Date());
+const simpleDay=()=>jstNow().slice(0,10);
+async function getDaily(date,signal){
+  if(cachedDay?.date===date)return cachedDay.doc;
+  const doc=await fetchJson(date,signal);
+  cachedDay={date,doc};
+  return doc;
+}
+function clearEntry(message,warning=true){
+  $('entryGrid').innerHTML='';
+  $('entryCheck').textContent=message;
+  $('entryCheck').className='entry-check'+(warning?' warning':'');
+  $('entryTag').textContent=warning?'要確認':'確認中';
+  $('entrySource').textContent='';
+}
+function showRaceCard(item,date,source){
+  const {race,venue,raceNo}=item;
+  if(race.date!==date)throw Error('日付不一致：指定'+date+'に対し、APIに'+(race.date||'日付なし')+'が記録されています。表示を停止しました。');
+  const names=[1,2,3,4,5,6].filter(i=>String(race.racers?.[i]?.name||'').trim()).length;
+  const actualToday=date===simpleDay();
+  const complete=names===6;
+  $('entryTag').textContent=(actualToday?'当日':'過去')+'：'+names+'/6名';
+  $('entryCheck').textContent=(actualToday?'当日':'指定日')+'の出走表 '+date+' / '+(labels[venue]||venue)+' '+raceNo+'R / '+names+'名分取得'+(complete?'（名前が6名そろっています）':'（一部未取得・欠場等の可能性）');
+  $('entryCheck').className='entry-check'+(complete?'':' warning');
+  $('entryGrid').innerHTML=[1,2,3,4,5,6].map(n=>{
+    const r=race.racers?.[n]||{};
+    const grade=/^(A1|A2|B1|B2)$/.test(String(r.rank_number_source||''))?r.rank_number_source:'—';
+    const number=r.number===null||r.number===undefined?'—':r.number;
+    const name=r.name||'未取得';
+    return '<article class="entry-card"><div class="entry-head">'+laneTag(n)+'<span class="entry-name">'+esc(name)+'</span></div><div class="entry-info">登録番号 '+esc(number)+' ・ 級別 '+esc(grade)+'</div></article>';
+  }).join('');
+  $('entrySource').innerHTML='取得時刻（端末の日本時間）：'+esc(jstNow())+'　／　配信元の最終更新時刻：不明<br>出典：<a href="'+E.apiUrl(date)+'" target="_blank" rel="noopener">Boatrace Open APIの対象日データ ↗</a>　／　<a href="'+officialUrl(date,venue,raceNo,'racelist')+'" target="_blank" rel="noopener">公式出走表と照合 ↗</a>。非公式APIの内容が最新・正確とは限りません。';
+}
+async function loadRaceCard(auto=false){
+  const ticket=++entryTicket,date=$('date').value,raceNo=Number($('raceNo').value);
+  const venue=Number($('stadium').value);
+  clearEntry('選択日の出走表を取得しています…',false);
+  if(!date||date>E.API_FIRST_DATE&&date>simpleDay()) {clearEntry('未来の日付の出走表は確認できません。');return;}
+  try{
+    const doc=await getDaily(date);
+    if(ticket!==entryTicket)return;
+    const all=E.racesFromDocument(doc);
+    const venues=Array.from(new Set(all.filter(x=>x.date===date).map(x=>x.venue))).sort((a,b)=>a-b);
+    if(!venues.length)throw Error('指定日と一致する出走表が取得できません。');
+    let v=venue;
+    if(auto&&!venues.includes(v)){v=venues[0];$('stadium').value=String(v);}
+    const item=all.find(x=>x.date===date&&x.venue===v&&x.raceNo===raceNo);
+    if(!item){
+      clearEntry((labels[v]||v)+' '+raceNo+'Rの出走表は未掲載か非開催です。指定日に出走表がある会場：'+venues.map(n=>labels[n]||n).join('、'));
+      return;
+    }
+    showRaceCard(item,date);
+  }catch(err){if(ticket===entryTicket)clearEntry('出走表の取得・照合に失敗：'+(err?.message||'不明なエラー')+'。APIの公開状況や回線を確認してください。');}
+}
+
+function showPicks(el,list){el.innerHTML=list.length?list.map((x,i)=>{const racers=active?.item?.race?.racers||{};const names=x.combo.split("-").map(n=>esc(racers[n]?.name||"未取得")).join(" → ");return '<div class="pick '+(el.id==="mainPicks"?"pick-main":"")+'"><span class="rank">'+(i+1)+'</span><div><div class="combo">'+htmlCombo(x.combo)+'</div><div class="pick-names">'+names+'</div></div><div class="chance">'+pct(x.p,2)+'<span>モデル内推定</span>'+(x.odds!==null&&x.odds!==undefined?'<span>'+Number(x.odds).toFixed(1)+'倍／100円で'+fmt(x.payout100)+'円</span>':'<span>オッズ未取得</span>')+'</div></div>';}).join(""):"指定倍率以上の穴候補はありません。";}
 function refreshPicks(){
   if(!active)return;
   const minOdds=Number($('minOdds').value);
@@ -383,7 +448,7 @@ function showResults(item,hist,results,success,fail,days){
   $('manualOdds').value='';refreshPicks();
   $('laneDistribution').innerHTML=result.entries.map(e=>`<div class="rate-row">${laneTag(e.lane)}<div class="track"><div class="fill" style="width:${Math.min(100,result.totalWinByLane[e.lane]*100).toFixed(2)}%"></div></div><div class="rate-num">${pct(result.totalWinByLane[e.lane])}</div></div>`).join('');
   $('historicSummary').innerHTML=`<div class="summary-grid" style="grid-template-columns:1fr 1fr"><div class="metric"><div class="val">${vStats.n ? pct(vStats.positions[0][1]/vStats.n):'—'}</div><div class="label">1コース1着率</div><div class="detail">コース別統計・実測</div></div><div class="metric"><div class="val">${vStats.n ? pct(vStats.upset/vStats.n):'—'}</div><div class="label">1号艇以外の1着率</div><div class="detail">枠番別統計・実測</div></div><div class="metric"><div class="val">${vStats.payouts?pct(vStats.bigPayout/vStats.payouts):'—'}</div><div class="label">3連単1万円以上率</div><div class="detail">払戻確認 ${vStats.payouts}R</div></div><div class="metric"><div class="val">${fmt(vStats.n)}</div><div class="label">集計レース数</div><div class="detail">この会場のみ</div></div></div><p class="note">実測統計は過去${days}日間で取得できた確定結果から集計したものです。1コースと1号艇は進入変更時には異なります。</p>`;
-  $('racersTable').innerHTML=`<table><thead><tr><th>枠</th><th>選手</th><th>全国勝率</th><th>当地勝率</th><th>モーター2連率</th><th>全国3連率</th><th>平均ST</th><th>展示</th><th>1着推定</th></tr></thead><tbody>${result.entries.map(({lane,data})=>`<tr><td>${laneTag(lane)}</td><td>${esc(data.name||'未取得')}</td><td>${value(data.national_win_rate,2)}</td><td>${value(data.local_win_rate,2)}</td><td>${value(data.motor_top_2_percent)}%</td><td>${value(data.national_top_3_percent)}%</td><td>${value(data.average_start_timing,2)}</td><td>${value(race.preview?.racers?.[lane]?.exhibition_time,2)}</td><td class="now">${pct(result.totalWinByLane[lane])}</td></tr>`).join('')}</tbody></table>`;
+  $('racersTable').innerHTML=`<table><thead><tr><th>枠</th><th>選手</th><th>登録番号</th><th>級別</th><th>全国勝率</th><th>当地勝率</th><th>モーター2連率</th><th>全国3連率</th><th>平均ST</th><th>展示</th><th>1着推定</th></tr></thead><tbody>${result.entries.map(({lane,data})=>`<tr><td>${laneTag(lane)}</td><td>${esc(data.name||'未取得')}</td><td>${esc(data.number??'—')}</td><td>${esc(data.rank_number_source||'—')}</td><td>${value(data.national_win_rate,2)}</td><td>${value(data.local_win_rate,2)}</td><td>${value(data.motor_top_2_percent)}%</td><td>${value(data.national_top_3_percent)}%</td><td>${value(data.average_start_timing,2)}</td><td>${value(race.preview?.racers?.[lane]?.exhibition_time,2)}</td><td class="now">${pct(result.totalWinByLane[lane])}</td></tr>`).join('')}</tbody></table>`;
   const verified=E.validation(hist,venue);
   if(verified.error){$('validation').innerHTML=`<p class="note">${esc(verified.error)}</p>`;}
   else {
@@ -426,13 +491,16 @@ async function launch(){
   currentRun=new AbortController();const signal=currentRun.signal;
   active=null;$('content').classList.add('hidden');setBusy(true);setProgress(0,1);setStatus('選択日の出走表を取得しています…');
   try{
-    const doc=await fetchJson(d,signal);
+    const doc=await getDaily(d,signal);
     const chosen=E.racesFromDocument(doc).find(item=>item.venue===venue&&item.raceNo===raceNo);
     if(!chosen){
       const available=E.racesFromDocument(doc).filter(item=>item.raceNo===raceNo);
       const names=available.map(v=>labels[v.venue]).filter(Boolean).join('、');
       throw Error(`${labels[venue]} ${raceNo}R の出走表が見つかりません。\n${names?`この日の${raceNo}R開催場：${names}`:'この日の対象レースが未公開、または非開催です。'}`);
     }
+    if(chosen.date!==d||chosen.race.date!==d)throw Error('日付の一致を確認できません。予想を中止しました。');
+    showRaceCard(chosen,d);
+    setStatus('出走選手6艇を先に表示しました。過去統計を集計しています…');
     const dates=E.historyDates(d,days);let idx=0,done=0,ok=0,failed=0;
     const history=[];
     if(!dates.length)throw Error('集計可能な過去日付がありません。2026年2月以降の日付を選択してください。');
@@ -466,6 +534,9 @@ async function launch(){
   finally{if(currentRun?.signal===signal)currentRun=null;setBusy(false);}
 }
 $('go').addEventListener('click',launch);
+$('checkEntries').addEventListener('click',()=>loadRaceCard());
+['date','stadium','raceNo'].forEach(id=>$(id).addEventListener('change',()=>loadRaceCard()));
+loadRaceCard(true);
 $('cancel').addEventListener('click',()=>{currentRun?.abort();});
 })();
 </script>

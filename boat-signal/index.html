@@ -43,7 +43,7 @@
 <div class="two"><section class="panel"><h2>1着の推定分布</h2><p class="sub">各艇が1着になるモデル内の割合（実測勝率ではありません）</p><div id="laneDistribution"></div></section><section class="panel"><h2>対象会場の過去統計</h2><div id="historicSummary"></div></section></div>
 <section class="panel"><h2>出走選手と分析指標</h2><p class="sub">選手の当該レース出走表に記載された数値です。— は未取得です。</p><div id="racersTable" class="sailor-table"></div></section>
 <section class="panel"><h2>本人のコース別・当地・直近成績</h2><p class="sub">登録番号で本人の確定レースを照合。進入コースは展示進入があれば採用し、なければ枠番を仮採用。集計は選択した過去14〜90日間に限定され、通算成績ではありません。出走0件は—で表示。</p><div id="personalTable" class="sailor-table"></div><p class="note">出走数が少ないときは影響を小さく補正します。直近10走・30走は選択期間内で取得できた最大10・30走を使用し、件数を併記しています。</p></section>
-<section class="panel"><h2>期間を分離した簡易バックテスト</h2><p class="sub">先の日付を検証に混ぜないよう、古い約70%の日付で学習し、新しい約30%の日付でテスト。個人成績も学習期間内の確定成績だけを使用。同じ会場のテストレースを集計します。</p><div id="validation"></div><p class="note">回収率は「本命5点を各100円購入したと仮定」した過去検証値。手数料・投票不可・中止の差異を除き、未来の利益は予測しません。対象期間内の利用可能な払戻データだけを集計します。</p></section>
+<section class="panel"><h2>期間を分離した簡易バックテスト</h2><p class="sub">先の日付を検証に混ぜないよう、古い約70%の日付を学習に、新しい約30%の日付を検証に使い、本人実績あり・なしを同じレースで比較します。検証日の結果は予測に使いません。</p><div id="validation"></div><p class="note">回収率は「本命5点を各100円購入したと仮定」した過去検証値。手数料・投票不可・中止の差異を除き、未来の利益は予測しません。対象期間内の利用可能な払戻データだけを集計します。</p></section>
 <section class="panel hidden" id="settled"><h2>レース終了後の照合</h2><div id="settledBody"></div></section>
 </div>
 <footer class="footnotes"><div class="disclaimer"><strong>ご注意：</strong>これは無料の統計分析ツールです。オッズ表示は一部手入力または翌日公開の非公式履歴データです。購入時の確定倍率とは異なることがあります。表示する「推定確率」は未校正のモデル出力で、実際の的中確率ではありません。出走取消・進入変更・直前情報の反映遅れ等があります。最終情報は必ず公式サイトで確認してください。舟券の購入は20歳以上です。</div><p>出典：<a href="https://www.boatrace.jp/owpc/pc/extra/data/download.html" target="_blank" rel="noopener">BOAT RACE公式データダウンロード</a> ／ <a href="https://github.com/boatraceopenapi/api" target="_blank" rel="noopener">Boatrace Open API（MITライセンス、非公式）</a> ／ <a href="https://github.com/boatraceopenapi/api/blob/gh-pages/docs/v1/schema.md" target="_blank" rel="noopener">データ仕様</a> ／ <a href="https://github.com/turnmark/api" target="_blank" rel="noopener">過去3連単オッズ（非公式）</a></p><p>© 2026 BOAT SIGNAL ｜ 自作の分析プログラム。オフィシャル団体との提携・承認はありません。</p></footer>
@@ -165,6 +165,7 @@
   }
   function extractHistory(doc, dateHint) {
     return racesFromDocument(doc).flatMap(({ date, venue, raceNo, race }) => {
+      if(dateHint && date && date!==dateHint)return []; // avoid mislabeled date
       const final = comboFromResult(race.result);
       if (!final || !race.racers || Object.keys(race.racers).length < 3) return [];
       const lanes = Object.fromEntries(LANES.map(lane => [lane, nval(race?.result?.racers?.[lane]?.course_number) ?? lane]));
@@ -299,12 +300,13 @@
     // Separate 1st/2nd/3rd propensities; sum over all valid orders is normalized later.
     return laneWeights[0][first] * laneWeights[1][second] * laneWeights[2][third];
   }
-  function predict(race, venue, stats) {
+  function predict(race, venue, stats, options={}) {
     if (!stats?.all?.n) throw Error('過去成績をまだ取得できていません。');
     const entries = preRaceFields(race);
     const preview = race.preview || null;
     const { adjustment, included } = fieldAdjustments(entries, preview);
     const personal=Object.fromEntries(entries.map(e=>[e.lane,racerPersonalStats(stats,e,venue,preview)]));
+    const usePersonal=options?.usePersonal!==false;
     const laneWeights = [0,1,2].map((pos) => Object.fromEntries(entries.map(entry => {
       const {lane}=entry;
       const actualCourse = nval(preview?.racers?.[lane]?.course_number) || lane;
@@ -313,7 +315,7 @@
       // shrink raw ability so numeric inputs cannot drive unbounded probabilities
       const ability = CAP(adjustment[lane], -2.7, 2.7);
       const abilityFactor = pos === 0 ? 1 : pos === 1 ? .78 : .61;
-      return [lane, Math.exp(CAP(Math.log(prior / (1/6)) * 1.25 + ability * abilityFactor + personalAdjust(personal[lane],pos,prior,entry), -7, 7))];
+      return [lane, Math.exp(CAP(Math.log(prior / (1/6)) * 1.25 + ability * abilityFactor + (usePersonal?personalAdjust(personal[lane],pos,prior,entry):0), -7, 7))];
     })));
     const candidates = [];
     for (const a of entries) for (const b of entries) for (const c of entries) {
@@ -339,34 +341,41 @@
       totalWinByLane, top3ByLane, included, dataCount: stats.all.n, venueCount: venueStats.n,
       venueStats, entries, personal };
   }
+
   function validation(history, venue) {
-    const days = Array.from(new Set(history.map(h=>h.date))).sort();
-    if (days.length < 10) return { error: '検証には最低10日分の確定成績が必要です。' };
-    const split = Math.max(7, Math.floor(days.length * .7));
-    if (split >= days.length) return { error: '検証用の期間が不足しています。' };
-    const cutoff = days[split];
-    const train = history.filter(h=>h.date < cutoff);
-    const test = history.filter(h=>h.date >= cutoff && h.venue === venue);
-    if (train.length < 100 || test.length < 10) return { error: '対象会場の検証レースまたは学習データが足りません。' };
-    const stats = makeStats(train);
-    const count = { n:0, top1:0, top5:0, hole5:0, head:0, payouts:0, stakes:0, payback:0,
-      incompletePayout:0, from:cutoff, to:days.at(-1), training:train.length };
-    for (const h of test) {
-      let pred;
-      try { pred = predict(h.race,h.venue,stats); } catch { continue; }
-      count.n++;
-      if (pred.main[0]?.combo===h.combo) count.top1++;
-      if (pred.main.some(p=>p.combo===h.combo)) count.top5++;
-      if (pred.hole.some(p=>p.combo===h.combo)) count.hole5++;
-      const f = Number(h.combo.split('-')[0]);
-      const bestHead = Number(pred.main[0]?.combo.split('-')[0]);
-      if (bestHead===f) count.head++;
-      if (h.amount === null) { count.incompletePayout++; continue; }
-      count.payouts++;
-      count.stakes += pred.main.length * 100;
-      if (pred.main.some(p=>p.combo===h.combo)) count.payback += h.amount;
+    const days=Array.from(new Set(history.map(h=>h.date))).sort();
+    if(days.length<10)return {error:'検証には最低10日分の確定成績が必要です。'};
+    const split=Math.max(7,Math.floor(days.length*.7));
+    if(split>=days.length)return {error:'検証用の期間が不足しています。'};
+    const cutoff=days[split];
+    const train=history.filter(h=>h.date<cutoff);
+    const test=history.filter(h=>h.date>=cutoff&&h.venue===venue);
+    if(train.length<100||test.length<10)return {error:'対象会場の検証レースまたは学習データが足りません。'};
+    const stats=makeStats(train);
+    const blank=()=>({n:0,top1:0,top5:0,hole5:0,head:0,payouts:0,stakes:0,payback:0,incompletePayout:0});
+    const individual=blank(),baseline=blank();
+    const assess=(c,pred,h)=>{
+      c.n++;
+      if(pred.main[0]?.combo===h.combo)c.top1++;
+      if(pred.main.some(p=>p.combo===h.combo))c.top5++;
+      if(pred.hole.some(p=>p.combo===h.combo))c.hole5++;
+      if(Number(pred.main[0]?.combo.split('-')[0])===Number(h.combo.split('-')[0]))c.head++;
+      if(!Number.isFinite(h.amount)){c.incompletePayout++;return;}
+      c.payouts++;c.stakes+=pred.main.length*100;
+      if(pred.main.some(p=>p.combo===h.combo))c.payback+=h.amount;
+    };
+    let skipped=0;
+    for(const h of test){
+      let withPersonal,withoutPersonal;
+      try{
+        withPersonal=predict(h.race,h.venue,stats,{usePersonal:true});
+        withoutPersonal=predict(h.race,h.venue,stats,{usePersonal:false});
+      }catch{skipped++;continue;}
+      assess(individual,withPersonal,h);assess(baseline,withoutPersonal,h);
     }
-    return count;
+    if(!individual.n)return {error:'比較可能なレースがありません。'};
+    return {...individual,individual,baseline,skipped,from:cutoff,to:days.at(-1),
+      training:train.length,trainingDays:split,testDays:days.length-split};
   }
   root.BoatEngine = { API_FIRST_DATE, datePlus, historyDates, apiUrl,
     historicalOddsUrl, oddsFromDocument, normalizeOdds, parseManualOdds, attachOdds,
@@ -514,10 +523,26 @@ function showResults(item,hist,results,success,fail,days){
   const sampled=(p,n)=>n?pct(p):'—';
   $('personalTable').innerHTML=`<table><thead><tr><th>枠/想定進入</th><th>レーサー</th><th>本人コース</th><th>1着率</th><th>2着率</th><th>3着率</th><th>3連対率</th><th>当地</th><th>当地3連対率</th><th>当地×コース</th><th>直近10走<br>1着/3連対</th><th>直近30走<br>1着/3連対</th></tr></thead><tbody>${result.entries.map(e=>{const p=result.personal[e.lane],c=p.courseStats,v=p.venue,vc=p.venueCourse;const recent=t=>t.n?`${t.n}走：${pct(t.p1)}/${pct(t.top3)}`:'—';return `<tr><td>${laneTag(e.lane)}/${p.course}コース</td><td>${esc(e.data.name||'未取得')}</td><td>${c.n}走</td><td>${sampled(c.p1,c.n)}</td><td>${sampled(c.p2,c.n)}</td><td>${sampled(c.p3,c.n)}</td><td>${sampled(c.top3,c.n)}</td><td>${v.n}走</td><td>${sampled(v.top3,v.n)}</td><td>${vc.n}走・${sampled(vc.top3,vc.n)}</td><td>${recent(p.recent10)}</td><td>${recent(p.recent30)}</td></tr>`;}).join('')}</tbody></table>`;
   $('racersTable').innerHTML=`<table><thead><tr><th>枠</th><th>選手</th><th>登録番号</th><th>級別</th><th>全国勝率</th><th>当地勝率</th><th>モーター2連率</th><th>全国3連率</th><th>平均ST</th><th>展示</th><th>1着推定</th></tr></thead><tbody>${result.entries.map(({lane,data})=>`<tr><td>${laneTag(lane)}</td><td>${esc(data.name||'未取得')}</td><td>${esc(data.number??'—')}</td><td>${esc(data.rank_number_source||'—')}</td><td>${value(data.national_win_rate,2)}</td><td>${value(data.local_win_rate,2)}</td><td>${value(data.motor_top_2_percent)}%</td><td>${value(data.national_top_3_percent)}%</td><td>${value(data.average_start_timing,2)}</td><td>${value(race.preview?.racers?.[lane]?.exhibition_time,2)}</td><td class="now">${pct(result.totalWinByLane[lane])}</td></tr>`).join('')}</tbody></table>`;
+
   const verified=E.validation(hist,venue);
   if(verified.error){$('validation').innerHTML=`<p class="note">${esc(verified.error)}</p>`;}
-  else {
-    $('validation').innerHTML=`<div class="summary-grid"><div class="metric"><div class="val">${pct(verified.top1/verified.n)}</div><div class="label">本命1点の的中率</div></div><div class="metric"><div class="val">${pct(verified.top5/verified.n)}</div><div class="label">本命5点の的中率</div></div><div class="metric"><div class="val">${pct(verified.hole5/verified.n)}</div><div class="label">穴5点の的中率</div></div><div class="metric"><div class="val">${verified.payouts?((verified.payback/verified.stakes)*100).toFixed(1)+'%':'—'}</div><div class="label">本命5点の仮定回収率</div><div class="detail">${verified.payouts}R / 各100円</div></div></div><p class="note">検証：${verified.from}～${verified.to}、${verified.n}R。学習に使用した過去結果：${fmt(verified.training)}R。払戻欠損のため回収率から除外：${verified.incompletePayout}R。</p>`;
+  else{
+    const a=verified.individual,b=verified.baseline;
+    const rate=(x,k)=>x.n?pct(x[k]/x.n):'—';
+    const roi=x=>x.stakes?(100*x.payback/x.stakes).toFixed(1)+'%':'—';
+    const delta=(x,y,n)=>n?(100*(x-y)/n>=0?'+':'')+(100*(x-y)/n).toFixed(1)+'pt':'—';
+    $('validation').innerHTML=`<div class="summary-grid">
+      <div class="metric"><div class="val">${rate(a,'top1')}</div><div class="label">個人版・本命1点的中率</div></div>
+      <div class="metric"><div class="val">${rate(a,'top5')}</div><div class="label">個人版・本命5点的中率</div></div>
+      <div class="metric"><div class="val">${rate(a,'hole5')}</div><div class="label">個人版・穴5点的中率</div></div>
+      <div class="metric"><div class="val">${roi(a)}</div><div class="label">個人版・仮定回収率</div></div></div>
+      <div class="sailor-table"><table><thead><tr><th>同じ過去レースを比較</th><th>個人別モデル</th><th>従来モデル</th><th>差（個人−従来）</th></tr></thead><tbody>
+      <tr><td>本命1点の的中</td><td>${rate(a,'top1')}（${a.top1}/${a.n}）</td><td>${rate(b,'top1')}（${b.top1}/${b.n}）</td><td>${delta(a.top1,b.top1,a.n)}</td></tr>
+      <tr><td>本命5点の的中</td><td>${rate(a,'top5')}（${a.top5}/${a.n}）</td><td>${rate(b,'top5')}（${b.top5}/${b.n}）</td><td>${delta(a.top5,b.top5,a.n)}</td></tr>
+      <tr><td>穴5点の的中</td><td>${rate(a,'hole5')}（${a.hole5}/${a.n}）</td><td>${rate(b,'hole5')}（${b.hole5}/${b.n}）</td><td>${delta(a.hole5,b.hole5,a.n)}</td></tr>
+      <tr><td>本命5点・仮定回収率</td><td>${roi(a)}</td><td>${roi(b)}</td><td>${a.stakes&&b.stakes?delta(a.payback/a.stakes,b.payback/b.stakes,1):'—'}</td></tr>
+      </tbody></table></div>
+      <p class="note">学習：${verified.trainingDays}日・${fmt(verified.training)}R。別期間での比較：${verified.from}～${verified.to}、同じ会場の${a.n}R。比較できなかったレース${verified.skipped}R、払戻欠損${a.incompletePayout}R。${a.n<100?'100R未満の比較は特に不確実です。':''} 締切直前の実オッズは再現できないため、回収率は参考値であり利益を保証しません。</p>`;
   }
   const finalized=E.comboFromResult(race.result);
   $('settled').classList.toggle('hidden',!finalized);

@@ -42,7 +42,7 @@
 <iframe id="liveFrame" class="livestream" title="BOATCAST レースライブ" loading="lazy" allow="autoplay; encrypted-media; fullscreen; picture-in-picture" referrerpolicy="strict-origin-when-cross-origin"></iframe>
 <div class="live-actions"><a id="liveNewTab" target="_blank" rel="noopener noreferrer" href="https://boatcast.jp/">公式ライブを開く ↗</a><button type="button" id="reloadLive">映像を再読み込み</button><button type="button" id="floatLive" aria-pressed="false">小窓モード</button><span class="help">音声・再生は映像内で操作。予想と併用可能</span></div>
 <p class="note">レース映像の権利は配信元に帰属します。外部ページを表示できない場合は公式サイトで視聴してください。配信がない会場・時間帯は映像が流れません。</p></section>
-<section class="panel" id="savedPanel"><div class="result-row" style="justify-content:space-between"><h2 style="margin:0">予想保存・レース後の自動照合</h2><button type="button" class="secondary" id="checkSaved">保存した予想を照合</button></div>
+<section class="panel" id="savedPanel"><div class="result-row" style="justify-content:space-between"><h2 style="margin:0">予想保存・レース後の自動照合</h2><div class="live-actions" style="margin:0"><button type="button" class="secondary" id="checkSaved">保存した予想を照合</button><button type="button" class="secondary" id="exportSaved" disabled>保存・的中記録をCSV出力</button></div></div>
 <p class="sub" style="margin-top:12px">レース締切前に本命5点・穴5点を端末に保存。サイトを開いている間は約2分ごとに結果を確認し、閉じていた場合は次に開いたときに照合します。無料の端末内保存で、ほかの端末やプライベートブラウズには同期されません。</p>
 <div id="savedStatus" class="entry-check">保存済みの予想を確認しています…</div><div id="savedList"></div>
 </section>
@@ -605,6 +605,7 @@ async function saveCurrentForecast(){
 }
 function renderSaved(){
   const list=readForecasts().sort((a,b)=>b.savedAt.localeCompare(a.savedAt));
+  $('exportSaved').disabled=!list.length;
   if(!list.length){
     $('savedStatus').textContent='保存済み予想はありません。レース締切前に「本命5点＋穴5点を締切前に保存」を押してください。';
     $('savedList').innerHTML='';return;
@@ -847,6 +848,25 @@ $('exportAudit').addEventListener('click',()=>{
   setTimeout(()=>URL.revokeObjectURL(url),5000);
 });
 
+
+
+$('exportSaved').addEventListener('click',()=>{
+  const records=readForecasts().sort((a,b)=>a.savedAt.localeCompare(b.savedAt));
+  if(!records.length)return;
+  const header=['レース日','会場番号','レース番号','予想保存日時UTC','当初締切予定JST','本命5点','穴5点',
+    '照合結果','実際の3連単','3連単払戻100円','本命的中','穴的中','返還を含む','照合日時UTC','購入なし'];
+  const rows=records.map(r=>[r.date,r.venue,r.raceNo,r.savedAt,r.deadline,
+    r.main.join(' / '),r.hole.join(' / '),r.status==='confirmed'?'確定照合':'照合待ち',
+    r.result?.combo||'',r.result?.payout??'',r.result?.mainHit?'はい':'いいえ',
+    r.result?.holeHit?'はい':'いいえ',r.result?.refunded?'はい':'いいえ',r.checkedAt||'','実際の購入なし']);
+  const q=x=>'"'+String(x??'').replace(/"/g,'""')+'"';
+  const csv='\uFEFF'+[header,...rows].map(xs=>xs.map(q).join(',')).join('\r\n');
+  const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
+  const a=document.createElement('a');
+  a.href=url;a.download='boat-signal-saved-predictions.csv';
+  document.body.appendChild(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),5000);
+});
 
 $('saveForecast').addEventListener('click',saveCurrentForecast);
 $('checkSaved').addEventListener('click',()=>checkSavedPredictions(false).catch(err=>{

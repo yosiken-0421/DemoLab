@@ -451,15 +451,55 @@ async function getDaily(date,signal,force=false){
   return doc;
 }
 function clearEntry(message,warning=true){
+  currentRaceSchedule=null;refreshSchedule();
   $('entryGrid').innerHTML='';
   $('entryCheck').textContent=message;
   $('entryCheck').className='entry-check'+(warning?' warning':'');
   $('entryTag').textContent=warning?'要確認':'確認中';
   $('entrySource').textContent='';
 }
+
+function parseDeadline(raw){
+  if(typeof raw!=='string')return null;
+  const m=raw.trim().match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?/);
+  if(!m)return null;
+  const y=m[1],mo=m[2],d=m[3],h=m[4],mi=m[5],se=m[6]||'00';
+  const instant=new Date(y+'-'+mo+'-'+d+'T'+h+':'+mi+':'+se+'+09:00');
+  return Number.isNaN(instant.getTime())?null:instant;
+}
+let currentRaceSchedule=null;
+function selectedDeadline(){return currentRaceSchedule?.closed_at?parseDeadline(currentRaceSchedule.closed_at):null;}
+const jstClock=x=>new Intl.DateTimeFormat('ja-JP',{timeZone:'Asia/Tokyo',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(x);
+function refreshSchedule(){
+  const deadline=selectedDeadline();
+  $('entryCloseAt').textContent=deadline?jstClock(deadline)+' 予定':'未取得';
+  $('entryStartAt').textContent='未取得';
+  const counter=$('entryCountdown');
+  if(!deadline){counter.textContent='時刻未取得';return;}
+  if($('date').value!==simpleDay()){counter.textContent=$('date').value<simpleDay()?'終了した日付':'選択日の締切';return;}
+  const sec=Math.ceil((deadline.getTime()-Date.now())/1000);
+  if(sec<=0)counter.textContent='予定時刻を経過';
+  else counter.textContent=Math.floor(sec/3600)+'時間'+String(Math.floor(sec%3600/60)).padStart(2,'0')+'分'+String(sec%60).padStart(2,'0')+'秒';
+}
+function liveUrl(venue){return 'https://race.boatcast.jp/?jo='+String(venue).padStart(2,'0');}
+function syncLive(){
+  const venue=Number($('stadium').value);
+  if(!Number.isInteger(venue)||venue<1||venue>24)return;
+  const url=liveUrl(venue);
+  $('liveVenue').textContent=labels[venue]+'（'+String(venue).padStart(2,'0')+'）';
+  $('liveNewTab').href=url;
+  if($('liveFrame').getAttribute('src')!==url)$('liveFrame').src=url;
+}
+$('reloadLive').addEventListener('click',()=>{
+  const src=liveUrl(Number($('stadium').value));
+  $('liveFrame').src='about:blank';
+  $('liveFrame').src=src;
+});
+
 function showRaceCard(item,date,source){
   const {race,venue,raceNo}=item;
   if(race.date!==date)throw Error('日付不一致：指定'+date+'に対し、APIに'+(race.date||'日付なし')+'が記録されています。表示を停止しました。');
+  currentRaceSchedule=race;refreshSchedule();
   const names=[1,2,3,4,5,6].filter(i=>String(race.racers?.[i]?.name||'').trim()).length;
   const actualToday=date===simpleDay();
   const complete=names===6;
@@ -677,7 +717,8 @@ $('exportAudit').addEventListener('click',()=>{
 
 $('go').addEventListener('click',launch);
 $('checkEntries').addEventListener('click',()=>loadRaceCard(false,true));
-['date','stadium','raceNo'].forEach(id=>$(id).addEventListener('change',()=>loadRaceCard()));
+['date','stadium','raceNo'].forEach(id=>$(id).addEventListener('change',()=>{if(id==='stadium')syncLive();loadRaceCard();}));
+syncLive();
 loadRaceCard(true);
 $('cancel').addEventListener('click',()=>{currentRun?.abort();});
 })();

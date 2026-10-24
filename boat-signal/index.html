@@ -47,6 +47,14 @@
 <div class="entry-grid" id="entryGrid"></div>
 <div class="data-source" id="entrySource"></div>
 </section>
+<section class="panel" id="oddsQuickPanel">
+<div class="result-row" style="justify-content:space-between"><h2>3連単・取得済み実オッズ <span class="small-tag" id="quickOddsTag">未取得</span></h2><button id="fetchOdds" type="button" class="secondary">オッズを再取得</button></div>
+<p class="sub">BoatraceCSVが記録した締切約5分前の3連単オッズを自動取得します。公開前・通信不可の場合は未取得と表示します。オッズは最終確定倍率ではありません。</p>
+<div class="entry-check" id="quickOddsStatus">オッズの取得を確認しています…</div>
+<div class="result-row"><label for="quickMinOdds" class="help">穴候補の最低オッズ</label><select id="quickMinOdds" class="secondary"><option value="20">20倍</option><option value="30" selected>30倍</option><option value="50">50倍</option><option value="100">100倍</option></select><span id="quickOddsCount" class="help">該当する買い目：未取得</span></div>
+<div class="sailor-table" id="quickOddsTable"></div>
+<p class="note">選択条件に一致する実オッズの組み合わせのみ表示します。オッズだけで当たりやすさは判断できません。<a id="csvOddsSource" target="_blank" rel="noopener noreferrer" href="https://boatracecsv.github.io/">出典：BoatraceCSV ↗</a>　／　<a id="quickOfficialOdds" href="https://www.boatrace.jp/" target="_blank" rel="noopener">公式3連単オッズ ↗</a></p>
+</section>
 <section class="panel" id="livePanel">
 <div class="live-top"><h2>ライブ映像 <span id="liveVenue" class="small-tag">選択中</span></h2><div class="live-toolbar">
 <button type="button" id="reloadLive">再読み込み</button><button type="button" id="wideLive">横幅いっぱい</button><button type="button" id="fullLive">全画面</button><button type="button" id="floatLive">小窓モード</button></div></div>
@@ -62,13 +70,13 @@
 </section>
 <div id="content" class="hidden">
 <section class="panel"><div class="result-row" style="justify-content:space-between"><h2 id="raceTitle" style="margin-bottom:8px"></h2><span id="raceTag" class="small-tag"></span></div><div class="sub" id="raceMeta"></div><div class="summary-grid" id="metrics"></div><div class="tip" id="explain"></div><div class="result-row" id="officialButtons"></div><div class="live-actions"><button type="button" class="primary" id="saveForecast">本命5点＋穴5点を締切前に保存</button><span id="saveStatus" class="help">予想の保存は、締切時刻より前のみ可能です。</span></div></section>
-<section class="panel" id="oddsPanel"><h2>3連単オッズ比較 <span class="small-tag" id="oddsTag">未取得</span></h2><p class="sub">過去レースの公開オッズは自動取得を試行。当日分は公式の3連単オッズを手動で反映します。締切までオッズは変動します。</p>
+<section class="panel" id="oddsPanel"><h2>3連単オッズ比較 <span class="small-tag" id="oddsTag">未取得</span></h2><p class="sub">締切約5分前に記録される非公式オッズを自動取得し、本命5点と穴候補に実倍率を表示します。取得前は推測しません。最終倍率は公式サイトで確認してください。</p>
 <div class="odds-controls"><label for="minOdds">穴候補の最低倍率</label><select id="minOdds"><option value="20">20倍</option><option value="30" selected>30倍</option><option value="50">50倍</option><option value="100">100倍</option></select><button type="button" class="secondary" id="applyOdds">下のオッズを反映</button><button type="button" class="secondary" id="clearOdds">オッズをクリア</button></div>
-<p class="note">入力形式：1行1組。例：<code>1-2-3 15.2</code>、<code>2-1-3, 40.5</code>。倍率で入力してください。入力されない組み合わせは「未取得」のままです。</p>
+<p class="note">自動取得が遅れている場合は、公式オッズを確認して手動入力も可能です。入力形式：1行1組。例：<code>1-2-3 15.2</code>、<code>2-1-3, 40.5</code>。倍率で入力してください。入力されない組み合わせは「未取得」のままです。</p>
 <textarea class="odds-input" id="manualOdds" placeholder="1-2-3 15.2&#10;2-1-3 40.5" spellcheck="false" aria-label="3連単オッズの手動入力"></textarea>
 <p class="odds-note" id="oddsStatus">統計を取得して予測すると、ここにオッズの状態が表示されます。</p>
 </section>
-<div class="two"><section class="panel"><h2>◎ 本命予想｜3連単 5点</h2><p class="sub">モデル内の組み合わせ確率が高い順</p><div class="picklist" id="mainPicks"></div></section><section class="panel"><h2>◇ 穴・波乱シナリオ｜3連単 5点</h2><p class="sub">オッズ未取得時は1号艇以外の1着候補。オッズ取得後は指定倍率以上を優先</p><div class="picklist" id="holePicks"></div></section></div>
+<div class="two"><section class="panel"><h2>◎ 本命予想｜3連単 5点</h2><p class="sub">モデル内の組み合わせ確率が高い順</p><div class="picklist" id="mainPicks"></div></section><section class="panel"><h2>◇ 穴・波乱シナリオ｜3連単 5点</h2><p class="sub">取得した実倍率が指定以上の買い目のみ。オッズ未取得・条件該当なしなら候補を捏造せず空欄にします。</p><div class="picklist" id="holePicks"></div></section></div>
 <div class="two"><section class="panel"><h2>1着の推定分布</h2><p class="sub">各艇が1着になるモデル内の割合（実測勝率ではありません）</p><div id="laneDistribution"></div></section><section class="panel"><h2>対象会場の過去統計</h2><div id="historicSummary"></div></section></div>
 <section class="panel"><h2>出走選手と分析指標</h2><p class="sub">選手の当該レース出走表に記載された数値です。— は未取得です。</p><div id="racersTable" class="sailor-table"></div></section>
 <section class="panel"><h2>本人のコース別・当地・直近成績</h2><p class="sub">登録番号で本人の確定レースを照合。進入コースは展示進入があれば採用し、なければ枠番を仮採用。集計は選択した過去14〜90日間に限定され、通算成績ではありません。出走0件は—で表示。</p><div id="personalTable" class="sailor-table"></div><p class="note">出走数が少ないときは影響を小さく補正します。直近10走・30走は選択期間内で取得できた最大10・30走を使用し、件数を併記しています。</p></section>

@@ -43,7 +43,7 @@
 <div class="two"><section class="panel"><h2>1着の推定分布</h2><p class="sub">各艇が1着になるモデル内の割合（実測勝率ではありません）</p><div id="laneDistribution"></div></section><section class="panel"><h2>対象会場の過去統計</h2><div id="historicSummary"></div></section></div>
 <section class="panel"><h2>出走選手と分析指標</h2><p class="sub">選手の当該レース出走表に記載された数値です。— は未取得です。</p><div id="racersTable" class="sailor-table"></div></section>
 <section class="panel"><h2>本人のコース別・当地・直近成績</h2><p class="sub">登録番号で本人の確定レースを照合。進入コースは展示進入があれば採用し、なければ枠番を仮採用。集計は選択した過去14〜90日間に限定され、通算成績ではありません。出走0件は—で表示。</p><div id="personalTable" class="sailor-table"></div><p class="note">出走数が少ないときは影響を小さく補正します。直近10走・30走は選択期間内で取得できた最大10・30走を使用し、件数を併記しています。</p></section>
-<section class="panel"><h2>期間を分離した簡易バックテスト</h2><p class="sub">先の日付を検証に混ぜないよう、古い約70%の日付を学習に、新しい約30%の日付を検証に使い、本人実績あり・なしを同じレースで比較します。検証日の結果は予測に使いません。</p><div id="validation"></div><p class="note">回収率は「本命5点を各100円購入したと仮定」した過去検証値。手数料・投票不可・中止の差異を除き、未来の利益は予測しません。対象期間内の利用可能な払戻データだけを集計します。</p></section>
+<section class="panel"><h2>期間を分離した簡易バックテスト</h2><p class="sub">先の日付を検証に混ぜないよう、古い約70%の日付を学習に、新しい約30%の日付を検証に使い、本人実績あり・なしを同じレースで比較します。検証日の結果は予測に使いません。</p><button type="button" class="secondary" id="exportAudit" disabled>検証明細をCSV保存</button><div id="validation"></div><p class="note">回収率は「本命5点を各100円購入したと仮定」した過去検証値。手数料・投票不可・中止の差異を除き、未来の利益は予測しません。対象期間内の利用可能な払戻データだけを集計します。</p></section>
 <section class="panel hidden" id="settled"><h2>レース終了後の照合</h2><div id="settledBody"></div></section>
 </div>
 <footer class="footnotes"><div class="disclaimer"><strong>ご注意：</strong>これは無料の統計分析ツールです。オッズ表示は一部手入力または翌日公開の非公式履歴データです。購入時の確定倍率とは異なることがあります。表示する「推定確率」は未校正のモデル出力で、実際の的中確率ではありません。出走取消・進入変更・直前情報の反映遅れ等があります。最終情報は必ず公式サイトで確認してください。舟券の購入は20歳以上です。</div><p>出典：<a href="https://www.boatrace.jp/owpc/pc/extra/data/download.html" target="_blank" rel="noopener">BOAT RACE公式データダウンロード</a> ／ <a href="https://github.com/boatraceopenapi/api" target="_blank" rel="noopener">Boatrace Open API（MITライセンス、非公式）</a> ／ <a href="https://github.com/boatraceopenapi/api/blob/gh-pages/docs/v1/schema.md" target="_blank" rel="noopener">データ仕様</a> ／ <a href="https://github.com/turnmark/api" target="_blank" rel="noopener">過去3連単オッズ（非公式）</a></p><p>© 2026 BOAT SIGNAL ｜ 自作の分析プログラム。オフィシャル団体との提携・承認はありません。</p></footer>
@@ -354,6 +354,7 @@
     const stats=makeStats(train);
     const blank=()=>({n:0,top1:0,top5:0,hole5:0,head:0,payouts:0,stakes:0,payback:0,incompletePayout:0});
     const individual=blank(),baseline=blank();
+    const auditRows=[];
     const assess=(c,pred,h)=>{
       c.n++;
       if(pred.main[0]?.combo===h.combo)c.top1++;
@@ -372,10 +373,21 @@
         withoutPersonal=predict(h.race,h.venue,stats,{usePersonal:false});
       }catch{skipped++;continue;}
       assess(individual,withPersonal,h);assess(baseline,withoutPersonal,h);
+      auditRows.push({date:h.date,venue:h.venue,raceNo:h.raceNo,actual:h.combo,
+        personalBest:withPersonal.main[0]?.combo||'',personalMain:withPersonal.main.map(x=>x.combo).join(' / '),
+        personalHole:withPersonal.hole.map(x=>x.combo).join(' / '),
+        personalHit:withPersonal.main.some(x=>x.combo===h.combo),
+        personalHoleHit:withPersonal.hole.some(x=>x.combo===h.combo),
+        baseBest:withoutPersonal.main[0]?.combo||'',
+        baseMain:withoutPersonal.main.map(x=>x.combo).join(' / '),
+        baseHole:withoutPersonal.hole.map(x=>x.combo).join(' / '),
+        baseHit:withoutPersonal.main.some(x=>x.combo===h.combo),
+        baseHoleHit:withoutPersonal.hole.some(x=>x.combo===h.combo),
+        payout:h.amount});
     }
     if(!individual.n)return {error:'比較可能なレースがありません。'};
     return {...individual,individual,baseline,skipped,from:cutoff,to:days.at(-1),
-      training:train.length,trainingDays:split,testDays:days.length-split};
+      training:train.length,trainingDays:split,testDays:days.length-split,auditRows};
   }
   root.BoatEngine = { API_FIRST_DATE, datePlus, historyDates, apiUrl,
     historicalOddsUrl, oddsFromDocument, normalizeOdds, parseManualOdds, attachOdds,
@@ -402,6 +414,7 @@ labels.slice(1).forEach((l,i)=>$('stadium').add(new Option(`${String(i+1).padSta
 for(let i=1;i<=12;i++)$('raceNo').add(new Option(`${i}R`,String(i)));
 let currentRun = null;
 let active = null;
+let latestValidation=null;
 const setStatus = (s,err=false)=>{ $('status').style.display='block';$('status').textContent=s;$('status').className=err?'error':''; };
 const setProgress = (done,total)=>{$('progress').style.display='block';$('bar').style.width=`${total ? (done/total)*100 : 0}%`;};
 const setBusy = b => {$('go').disabled=b;$('cancel').disabled=!b;};
@@ -525,6 +538,8 @@ function showResults(item,hist,results,success,fail,days){
   $('racersTable').innerHTML=`<table><thead><tr><th>枠</th><th>選手</th><th>登録番号</th><th>級別</th><th>全国勝率</th><th>当地勝率</th><th>モーター2連率</th><th>全国3連率</th><th>平均ST</th><th>展示</th><th>1着推定</th></tr></thead><tbody>${result.entries.map(({lane,data})=>`<tr><td>${laneTag(lane)}</td><td>${esc(data.name||'未取得')}</td><td>${esc(data.number??'—')}</td><td>${esc(data.rank_number_source||'—')}</td><td>${value(data.national_win_rate,2)}</td><td>${value(data.local_win_rate,2)}</td><td>${value(data.motor_top_2_percent)}%</td><td>${value(data.national_top_3_percent)}%</td><td>${value(data.average_start_timing,2)}</td><td>${value(race.preview?.racers?.[lane]?.exhibition_time,2)}</td><td class="now">${pct(result.totalWinByLane[lane])}</td></tr>`).join('')}</tbody></table>`;
 
   const verified=E.validation(hist,venue);
+  latestValidation=verified.error?null:verified;
+  $('exportAudit').disabled=!latestValidation?.auditRows?.length;
   if(verified.error){$('validation').innerHTML=`<p class="note">${esc(verified.error)}</p>`;}
   else{
     const a=verified.individual,b=verified.baseline;
@@ -579,7 +594,7 @@ async function launch(){
   const d=$('date').value,venue=Number($('stadium').value),raceNo=Number($('raceNo').value),days=Number($('days').value);
   if(!d||d<E.API_FIRST_DATE||d>($('date').max)){setStatus('2026年1月1日〜本日の範囲で日付を選択してください。',true);return;}
   currentRun=new AbortController();const signal=currentRun.signal;
-  active=null;$('content').classList.add('hidden');setBusy(true);setProgress(0,1);setStatus('選択日の出走表を取得しています…');
+  active=null;latestValidation=null;$('exportAudit').disabled=true;$('content').classList.add('hidden');setBusy(true);setProgress(0,1);setStatus('選択日の出走表を取得しています…');
   try{
     const doc=await getDaily(d,signal);
     const chosen=E.racesFromDocument(doc).find(item=>item.venue===venue&&item.raceNo===raceNo);
@@ -623,6 +638,28 @@ async function launch(){
   }catch(err){ if(signal.aborted){setStatus('取得を中止しました。');}else{setStatus(`取得または分析に失敗しました：${err?.message||'不明なエラー'}\nネット接続とデータの公開状況を確認してください。`,true);}}
   finally{if(currentRun?.signal===signal)currentRun=null;setBusy(false);}
 }
+
+$('exportAudit').addEventListener('click',()=>{
+  const data=latestValidation;
+  if(!data?.auditRows?.length)return;
+  const header=[
+    '日付','会場番号','レース','実際の3連単','個人版1位','個人版本命5点','個人版穴5点',
+    '個人版本命的中','個人版穴的中','従来型1位','従来型本命5点','従来型穴5点',
+    '従来型本命的中','従来型穴的中','3連単払戻円_100円あたり'
+  ];
+  const fields=r=>[r.date,r.venue,r.raceNo,r.actual,r.personalBest,r.personalMain,
+    r.personalHole,r.personalHit?'1':'0',r.personalHoleHit?'1':'0',r.baseBest,r.baseMain,
+    r.baseHole,r.baseHit?'1':'0',r.baseHoleHit?'1':'0',r.payout??''];
+  const csv=(v)=>'"'+String(v??'').replace(/"/g,'""')+'"';
+  const content='\uFEFF'+[header,...data.auditRows.map(fields)].map(row=>row.map(csv).join(',')).join('\r\n');
+  const blob=new Blob([content],{type:'text/csv;charset=utf-8'});
+  const url=URL.createObjectURL(blob);
+  const link=document.createElement('a');
+  link.href=url;link.download='boat-signal-backtest-'+data.from+'-'+data.to+'.csv';
+  document.body.appendChild(link);link.click();link.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),5000);
+});
+
 $('go').addEventListener('click',launch);
 $('checkEntries').addEventListener('click',()=>loadRaceCard(false,true));
 ['date','stadium','raceNo'].forEach(id=>$(id).addEventListener('change',()=>loadRaceCard()));

@@ -1,0 +1,473 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+<meta name="theme-color" content="#091629"/>
+<title>BOAT SIGNAL | 3連単 統計予想</title>
+<meta name="description" content="過去成績・選手成績・展示情報から3連単の本命と波乱候補を分析する無料Webツール。"/>
+<style>
+:root{color-scheme:dark;--bg:#081426;--panel:#11233a;--panel2:#162b43;--line:#2a3c54;--text:#edf6ff;--muted:#a9bed2;--aqua:#63e5d1;--blue:#88bbff;--warn:#ffd384;--red:#ff9f99;--radius:18px}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(900px 500px at 4% 0%,#14334c 0%,transparent 70%),var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN","Noto Sans JP",sans-serif;line-height:1.52}button,input,select{font:inherit}a{color:#93deee}a:hover{text-decoration:none}.wrap{max-width:1090px;padding:20px 17px 64px;margin:auto}.header{display:flex;align-items:center;justify-content:space-between;gap:15px;padding:10px 0 24px}.brand{display:flex;gap:12px;align-items:center}.logo{width:45px;height:45px;border-radius:14px;background:linear-gradient(135deg,#68e6d5,#4e88ff);display:grid;place-items:center;color:#091426;font-size:24px;font-weight:900;box-shadow:0 0 30px #2fadb247}.brand-name{font-weight:900;letter-spacing:.1em;font-size:20px}.brand-sub,.source-line{font-size:11px;color:var(--muted)}.source-line{text-align:right}.source-line a{display:block}.hero{padding:8px 0 24px}.eyebrow{font-size:11px;font-weight:800;letter-spacing:.15em;color:var(--aqua)}h1{line-height:1.28;margin:10px 0;font-size:clamp(25px,5.2vw,40px);letter-spacing:-.03em}.intro{color:var(--muted);margin:8px 0;max-width:760px;font-size:14px}.panel{background:linear-gradient(135deg,var(--panel),#0e1d31);border:1px solid var(--line);border-radius:var(--radius);padding:21px;margin-top:16px;box-shadow:0 14px 30px #00000010}h2{font-size:18px;margin:0 0 14px}h3{font-size:15px;margin:0 0 12px}.sub{font-size:12px;color:var(--muted);margin:-6px 0 14px}.control-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.field label{display:block;color:var(--muted);font-size:12px;font-weight:750;margin:0 0 6px}.field input,.field select{width:100%;background:#09192c;color:#edf6ff;border:1px solid #38516c;border-radius:10px;height:44px;padding:0 12px;outline-color:var(--aqua)}.action-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:17px}.primary{cursor:pointer;border:0;background:var(--aqua);color:#0a2830;padding:13px 26px;border-radius:11px;font-weight:900;min-height:45px}.primary:disabled{opacity:.55;cursor:not-allowed}.secondary{cursor:pointer;background:transparent;border:1px solid #52718d;color:var(--text);border-radius:10px;padding:11px 16px;min-height:45px}.secondary:disabled{opacity:.4}.help{font-size:12px;color:var(--muted)}#status{padding:12px 14px;background:#102a3b;border-radius:11px;margin-top:16px;font-size:13px;white-space:pre-line;display:none;border:1px solid #24536a}#status.error{background:#3a2028;border-color:#804451;color:#ffd9d7}#progress{width:100%;height:5px;background:#28435b;overflow:hidden;border-radius:30px;display:none;margin:10px 0 0}#bar{height:100%;width:0;background:var(--aqua);transition:width .2s}.summary-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:12px}.metric{padding:16px;border:1px solid var(--line);background:#0b1b2d;border-radius:13px;min-height:100px}.metric .val{font-size:26px;font-weight:900;letter-spacing:-.04em;line-height:1.2}.metric .label{font-size:12px;color:var(--muted);margin-top:7px}.metric .detail{font-size:11px;color:var(--muted);margin-top:5px}.two{display:grid;grid-template-columns:1fr 1fr;gap:14px}.tip{font-size:12px;background:#162b43;border-left:3px solid #63e5d1;padding:11px 13px;border-radius:0 9px 9px 0;margin:12px 0}.picklist{display:grid;gap:8px}.pick{display:grid;grid-template-columns:32px minmax(0,1fr) 92px;align-items:center;gap:10px;background:#0a1a2b;border:1px solid #294057;border-radius:12px;padding:11px}.pick .rank{font-size:12px;color:var(--muted);text-align:center}.combo{display:flex;align-items:center;gap:6px;flex-wrap:wrap}.lane{width:29px;height:29px;display:inline-grid;place-items:center;border-radius:8px;font-weight:850;font-size:15px;border:1px solid #ffffff22}.lane1{background:#f2f5f9;color:#162233}.lane2{background:#171d29;color:white;border-color:#637189}.lane3{background:#e94252;color:white}.lane4{background:#2767eb;color:white}.lane5{background:#f0c53d;color:#272210}.lane6{background:#47b572;color:#071a12}.dash{opacity:.7;color:#adc2d0}.chance{text-align:right;font-weight:900;font-variant-numeric:tabular-nums}.chance span{display:block;font-size:10px;font-weight:500;color:var(--muted)}.pick-main:first-child{border-color:#5c998f;background:#15353e}.note{font-size:12px;color:var(--muted);margin:10px 0 0}.sailor-table{overflow:auto}.sailor-table table{width:100%;border-collapse:collapse;font-size:12px;white-space:nowrap}.sailor-table th{text-align:right;color:var(--muted);font-weight:600;border-bottom:1px solid var(--line);padding:9px}.sailor-table td{text-align:right;padding:10px 9px;border-bottom:1px solid #1d3549}.sailor-table th:nth-child(-n+2),.sailor-table td:nth-child(-n+2){text-align:left}.sailor-table .lane{width:25px;height:25px;border-radius:6px;font-size:12px}.rate-row{display:grid;grid-template-columns:30px 1fr 54px;align-items:center;gap:9px;margin:8px 0}.track{height:10px;border-radius:25px;background:#283c51;overflow:hidden}.fill{height:100%;background:linear-gradient(90deg,#3975dc,#71e3cf);border-radius:22px}.rate-num{font-size:12px;color:var(--muted);text-align:right;font-variant-numeric:tabular-nums}.small-tag{font-size:11px;background:#274755;color:#adf3df;padding:3px 8px;border-radius:20px;font-weight:800;display:inline-block}.pill-warn{background:#62402b;color:#ffde9b}.pill-red{background:#72363d;color:#ffc0b6}.odds-input{width:100%;min-height:92px;background:#09192c;color:#edf6ff;border:1px solid #38516c;border-radius:10px;padding:10px;font:13px ui-monospace,SFMono-Regular,Menlo,monospace;resize:vertical}.odds-note{font-size:12px;color:#b9cedf;white-space:pre-line}.odds-controls{display:flex;align-items:center;gap:9px;flex-wrap:wrap}.odds-controls select{height:40px;background:#09192c;color:#edf6ff;border:1px solid #38516c;border-radius:10px;padding:0 8px}.footnotes{font-size:12px;color:var(--muted);padding:12px 4px}.footnotes p{margin:8px 0}.hidden{display:none!important}.now{color:var(--aqua);font-weight:700}.disclaimer{font-size:12px;color:#b5c9da;border:1px dashed #526d84;padding:13px;border-radius:11px;background:#12253b}.result-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.loader{display:inline-block;vertical-align:middle;width:12px;height:12px;border:2px solid #28495f;border-top-color:#9af7e5;border-radius:50%;animation:spin .8s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}
+@media(max-width:850px){.summary-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.two{grid-template-columns:1fr}}
+@media(max-width:570px){.wrap{padding:14px 12px 48px}.header{padding:4px 0 20px}.source-line{display:none}.brand-name{font-size:18px}.control-grid{grid-template-columns:1fr 1fr}.panel{padding:15px;margin-top:12px}h2{font-size:16px}.metric .val{font-size:23px}.pick{grid-template-columns:23px minmax(0,1fr) 68px;gap:6px;padding:10px 7px}.lane{width:27px;height:27px;border-radius:7px}.summary-grid{gap:8px}.metric{padding:12px;min-height:88px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header class="header"><div class="brand"><div class="logo">≋</div><div><div class="brand-name">BOAT SIGNAL</div><div class="brand-sub">3連単 ｜ 統計予測・波乱分析</div></div></div><div class="source-line">データ: Boatrace Open API（非公式）<a href="https://www.boatrace.jp/owpc/pc/extra/data/download.html" target="_blank" rel="noopener">BOAT RACE 公式データ</a></div></header>
+<section class="hero"><div class="eyebrow">BOAT RACE • 3-REN-TAN ANALYTICS</div><h1>本命を読む。<br>波乱も想定する。</h1><p class="intro">出走表の選手・モーター成績と、過去レースの着順統計から全通りを計算。本命5点、穴シナリオ5点を分けて表示します。過去レースのオッズは翌日公開データから取得を試み、当日は公式ページのオッズを手入力できます。数字が取得できない場合は推測しません。</p></section>
+<section class="panel" aria-label="予測条件"><h2>レース選択</h2><div class="control-grid">
+<div class="field"><label for="date">開催日</label><input type="date" id="date" min="2026-01-01" /></div>
+<div class="field"><label for="stadium">レース場</label><select id="stadium"></select></div>
+<div class="field"><label for="raceNo">レース</label><select id="raceNo"></select></div>
+<div class="field"><label for="days">過去成績の対象</label><select id="days"><option value="14">直前14日間</option><option value="30" selected>直前30日間</option><option value="60">直前60日間</option><option value="90">直前90日間</option></select></div>
+</div><div class="action-row"><button class="primary" id="go" type="button">統計を取得して予測</button><button class="secondary" id="cancel" type="button" disabled>中止</button><span class="help">無料・会員登録なし・投票機能なし</span></div><div id="status" role="status" aria-live="polite"></div><div id="progress"><div id="bar"></div></div></section>
+<div id="content" class="hidden">
+<section class="panel"><div class="result-row" style="justify-content:space-between"><h2 id="raceTitle" style="margin-bottom:8px"></h2><span id="raceTag" class="small-tag"></span></div><div class="sub" id="raceMeta"></div><div class="summary-grid" id="metrics"></div><div class="tip" id="explain"></div><div class="result-row" id="officialButtons"></div></section>
+<section class="panel" id="oddsPanel"><h2>3連単オッズ比較 <span class="small-tag" id="oddsTag">未取得</span></h2><p class="sub">過去レースの公開オッズは自動取得を試行。当日分は公式の3連単オッズを手動で反映します。締切までオッズは変動します。</p>
+<div class="odds-controls"><label for="minOdds">穴候補の最低倍率</label><select id="minOdds"><option value="20">20倍</option><option value="30" selected>30倍</option><option value="50">50倍</option><option value="100">100倍</option></select><button type="button" class="secondary" id="applyOdds">下のオッズを反映</button><button type="button" class="secondary" id="clearOdds">オッズをクリア</button></div>
+<p class="note">入力形式：1行1組。例：<code>1-2-3 15.2</code>、<code>2-1-3, 40.5</code>。倍率で入力してください。入力されない組み合わせは「未取得」のままです。</p>
+<textarea class="odds-input" id="manualOdds" placeholder="1-2-3 15.2&#10;2-1-3 40.5" spellcheck="false" aria-label="3連単オッズの手動入力"></textarea>
+<p class="odds-note" id="oddsStatus">統計を取得して予測すると、ここにオッズの状態が表示されます。</p>
+</section>
+<div class="two"><section class="panel"><h2>◎ 本命予想｜3連単 5点</h2><p class="sub">モデル内の組み合わせ確率が高い順</p><div class="picklist" id="mainPicks"></div></section><section class="panel"><h2>◇ 穴・波乱シナリオ｜3連単 5点</h2><p class="sub">オッズ未取得時は1号艇以外の1着候補。オッズ取得後は指定倍率以上を優先</p><div class="picklist" id="holePicks"></div></section></div>
+<div class="two"><section class="panel"><h2>1着の推定分布</h2><p class="sub">各艇が1着になるモデル内の割合（実測勝率ではありません）</p><div id="laneDistribution"></div></section><section class="panel"><h2>対象会場の過去統計</h2><div id="historicSummary"></div></section></div>
+<section class="panel"><h2>出走選手と分析指標</h2><p class="sub">選手の当該レース出走表に記載された数値です。— は未取得です。</p><div id="racersTable" class="sailor-table"></div></section>
+<section class="panel"><h2>期間を分離した簡易バックテスト</h2><p class="sub">先の日付を検証に混ぜないよう、古い約70%の日付で学習し、新しい約30%の日付でテスト。同じ会場のテストレースを集計します。</p><div id="validation"></div><p class="note">回収率は「本命5点を各100円購入したと仮定」した過去検証値。手数料・投票不可・中止の差異を除き、未来の利益は予測しません。対象期間内の利用可能な払戻データだけを集計します。</p></section>
+<section class="panel hidden" id="settled"><h2>レース終了後の照合</h2><div id="settledBody"></div></section>
+</div>
+<footer class="footnotes"><div class="disclaimer"><strong>ご注意：</strong>これは無料の統計分析ツールです。オッズ表示は一部手入力または翌日公開の非公式履歴データです。購入時の確定倍率とは異なることがあります。表示する「推定確率」は未校正のモデル出力で、実際の的中確率ではありません。出走取消・進入変更・直前情報の反映遅れ等があります。最終情報は必ず公式サイトで確認してください。舟券の購入は20歳以上です。</div><p>出典：<a href="https://www.boatrace.jp/owpc/pc/extra/data/download.html" target="_blank" rel="noopener">BOAT RACE公式データダウンロード</a> ／ <a href="https://github.com/boatraceopenapi/api" target="_blank" rel="noopener">Boatrace Open API（MITライセンス、非公式）</a> ／ <a href="https://github.com/boatraceopenapi/api/blob/gh-pages/docs/v1/schema.md" target="_blank" rel="noopener">データ仕様</a> ／ <a href="https://github.com/turnmark/api" target="_blank" rel="noopener">過去3連単オッズ（非公式）</a></p><p>© 2026 BOAT SIGNAL ｜ 自作の分析プログラム。オフィシャル団体との提携・承認はありません。</p></footer>
+</div>
+<script>
+/* Boat Signal - statistical trifecta estimator.
+   Data source: Boatrace Open API (unofficial, MIT-licensed API project).
+   Predictions are model-derived estimates, not calibrated odds or promises. */
+(function(root) {
+  'use strict';
+
+  const API_FIRST_DATE = '2026-01-01';
+  const LANES = [1, 2, 3, 4, 5, 6];
+  const CAP = (n, min, max) => Math.max(min, Math.min(max, n));
+  const nval = value => value === null || value === undefined || value === '' ? null : (Number.isFinite(Number(value)) ? Number(value) : null);
+  const kDate = s => String(s).replaceAll('-', '');
+
+  function datePlus(d, days) {
+    const x = new Date(`${d}T00:00:00Z`);
+    if (Number.isNaN(x.getTime())) throw Error('日付の形式が正しくありません。');
+    x.setUTCDate(x.getUTCDate() + days);
+    return x.toISOString().slice(0, 10);
+  }
+  function historyDates(date, days) {
+    const result = [];
+    for (let i = days; i >= 1; i--) {
+      const d = datePlus(date, -i);
+      if (d >= API_FIRST_DATE) result.push(d);
+    }
+    return result;
+  }
+  function apiUrl(date) {
+    return `https://boatraceopenapi.github.io/api/v1/${date.slice(0, 4)}/${kDate(date)}.json`;
+  }
+
+  // Historical snapshot from turnmark/api. Published the following day;
+  // it MUST NOT be presented as a live or guaranteed closing quote.
+  function historicalOddsUrl(date) {
+    return `https://turnmark.github.io/api/v1/${date.slice(0, 4)}/${kDate(date)}.json`;
+  }
+  function oddsFromDocument(doc, venue, raceNo) {
+    const race = doc?.programs?.stadiums?.[String(venue)]?.races?.[String(raceNo)];
+    return normalizeOdds(race?.odds?.trifecta);
+  }
+  function normalizeOdds(trifecta) {
+    const out = {};
+    if (!trifecta || typeof trifecta !== 'object') return out;
+    for (const a of LANES) for (const b of LANES) for (const c of LANES) {
+      if (a === b || a === c || b === c) continue;
+      const rate = nval(trifecta?.[a]?.[b]?.[c]);
+      if (rate !== null && rate > 1 && rate < 1e7) out[`${a}-${b}-${c}`] = rate;
+    }
+    return out;
+  }
+  function parseManualOdds(text) {
+    const values = {};
+    const invalid = [];
+    for (const [i, raw] of String(text).split(/\r?\n/).entries()) {
+      const line = raw.trim();
+      if (!line) continue;
+      // Accept one combination and decimal multiplier per line, separated
+      // by whitespace, tab or comma, e.g. "1-2-3 12.4".
+      const match = line.match(/^([1-6])\s*[-–>]\s*([1-6])\s*[-–>]\s*([1-6])\s*[,，:\s]+([0-9]+(?:\.[0-9]+)?)\s*(?:倍)?$/);
+      if (!match) { invalid.push(i + 1); continue; }
+      const [,a,b,c,x] = match;
+      if (new Set([a,b,c]).size !== 3) { invalid.push(i+1);continue; }
+      const v = Number(x);
+      if (!Number.isFinite(v) || v <= 1 || v >= 1e7) { invalid.push(i+1);continue; }
+      values[`${a}-${b}-${c}`] = v;
+    }
+    return { values, count:Object.keys(values).length, invalid };
+  }
+  function attachOdds(pred, oddsMap, minOdds = 25) {
+    const mapped = pred.candidates.map(c => {
+      const odds = Object.hasOwn(oddsMap, c.combo) ? nval(oddsMap[c.combo]) : null;
+      return { ...c, odds, payout100: odds === null ? null : Math.round(odds * 100), proxy:odds === null ? null : c.p * odds };
+    });
+    const main = pred.main.map(x => mapped.find(c=>c.combo===x.combo));
+    const qualified = mapped.filter(x=>x.first!==1 && !main.some(y=>y.combo===x.combo) && x.odds!==null && x.odds>=minOdds);
+    qualified.sort((a,b)=>b.proxy-a.proxy);
+    return { ...pred, candidates:mapped, main,
+      hole: qualified.length ? qualified.slice(0,5) : pred.hole.map(x=>mapped.find(c=>c.combo===x.combo)),
+      oddsCount:Object.keys(oddsMap).length,
+      holeUsesOdds:qualified.length>0, minOdds };
+  }
+
+  function racesFromDocument(doc) {
+    const output = [];
+    const stadiums = doc?.programs?.stadiums;
+    if (!stadiums || typeof stadiums !== 'object') return output;
+    for (const [venue, stadium] of Object.entries(stadiums)) {
+      for (const [raceNo, race] of Object.entries(stadium?.races || {})) {
+        if (!race || typeof race !== 'object') continue;
+        output.push({ date: race.date || '', venue: Number(venue), raceNo: Number(raceNo), race });
+      }
+    }
+    return output;
+  }
+  function comboFromResult(result) {
+    if (!result || typeof result !== 'object') return null;
+    // A finalized official-style trifecta payout gives the unambiguous order.
+    const trifecta = Array.isArray(result?.payouts?.trifecta) ? result.payouts.trifecta : [];
+    if (trifecta.length > 1) return null; // 同着などは単一着順として扱わない
+    for (const item of trifecta) {
+      const txt = String(item?.combination || '').replaceAll(' ', '');
+      if (/^[1-6]-[1-6]-[1-6]$/.test(txt)) {
+        const lanes = txt.split('-').map(Number);
+        if (new Set(lanes).size === 3) return { key: txt, places: lanes, amount: nval(item.amount) };
+      }
+    }
+    // Some completed races have no trifecta payout. Rankings may still be unambiguous.
+    const ordered = Object.entries(result.racers || {}).map(([lane, x]) => ({ lane: Number(lane), place: nval(x?.place_number) }))
+      .filter(x => LANES.includes(x.lane) && x.place !== null && [1, 2, 3].includes(x.place))
+      .sort((a,b) => a.place - b.place);
+    if (ordered.length === 3 && ordered.map(x => x.place).join('') === '123' && new Set(ordered.map(x => x.lane)).size === 3) {
+      return { key: ordered.map(x => x.lane).join('-'), places: ordered.map(x => x.lane), amount: null };
+    }
+    return null;
+  }
+  function extractHistory(doc, dateHint) {
+    return racesFromDocument(doc).flatMap(({ date, venue, raceNo, race }) => {
+      const final = comboFromResult(race.result);
+      if (!final || !race.racers || Object.keys(race.racers).length < 3) return [];
+      const lanes = Object.fromEntries(LANES.map(lane => [lane, nval(race?.result?.racers?.[lane]?.course_number) ?? lane]));
+      return [{ date: date || dateHint, venue, raceNo, combo: final.key, places: final.places,
+        amount: final.amount, courses: lanes, wind: nval(race.result?.wind_speed), race }];
+    });
+  }
+  function newCounts() {
+    return { n: 0, positions: Array.from({ length: 3 }, () => Array(7).fill(0)), upset: 0, payouts: 0, bigPayout: 0, windHigh: { n: 0, upset: 0 } };
+  }
+  function makeStats(history) {
+    const all = newCounts(), byVenue = {};
+    for (const item of history) {
+      if (!item?.places || item.places.length !== 3) continue;
+      const destination = (byVenue[item.venue] ||= newCounts());
+      for (const counter of [all, destination]) {
+        counter.n++;
+        for (let pos = 0; pos < 3; pos++) {
+          const course = item.courses?.[item.places[pos]] ?? item.places[pos];
+          if (course >= 1 && course <= 6) counter.positions[pos][course]++;
+        }
+        if (item.places[0] !== 1) counter.upset++;
+        if (item.amount !== null && item.amount !== undefined && Number.isFinite(item.amount)) {
+          counter.payouts++;
+          if (item.amount >= 10000) counter.bigPayout++;
+        }
+        if (item.wind !== null && item.wind >= 5) {
+          counter.windHigh.n++;
+          if (item.places[0] !== 1) counter.windHigh.upset++;
+        }
+      }
+    }
+    return { all, byVenue };
+  }
+  function positionPrior(stats, venue, pos, course) {
+    const g = stats.all;
+    const v = stats.byVenue[venue] || newCounts();
+    const national = (g.positions[pos][course] + 24 / 6) / (g.n + 24);
+    return (v.positions[pos][course] + 40 * national) / (v.n + 40);
+  }
+  function preRaceFields(race) {
+    const entries = Object.entries(race?.racers || {}).map(([lane, data]) => ({ lane: Number(lane), data }))
+      .filter(v => LANES.includes(v.lane) && v.data && typeof v.data === 'object').sort((a,b)=>a.lane-b.lane);
+    if (entries.length < 3) throw Error('有効な出走選手が3艇未満のため予測できません。');
+    return entries;
+  }
+  function firstAvailable(obj, key) { return nval(obj?.[key]); }
+  function fieldAdjustments(entries, preview) {
+    const feats = [
+      ['national_win_rate', .24, v => v.data],
+      ['local_win_rate', .07, v => v.data],
+      ['national_top_2_percent', .016, v => v.data],
+      ['national_top_3_percent', .007, v => v.data],
+      ['motor_top_2_percent', .016, v => v.data],
+      ['boat_top_2_percent', .006, v => v.data],
+      ['average_start_timing', -2.5, v => v.data],
+      ['exhibition_time', -2.7, v => preview?.racers?.[v.lane]],
+      ['start_timing', -0.7, v => preview?.racers?.[v.lane]],
+    ];
+    const out = Object.fromEntries(entries.map(v => [v.lane, 0]));
+    const included = [];
+    for (const [key, weight, object] of feats) {
+      const points = entries.map(e => ({lane:e.lane, value:firstAvailable(object(e), key)}));
+      const known = points.filter(p => p.value !== null && Number.isFinite(p.value));
+      if (known.length < 3) continue;
+      const avg = known.reduce((s,p)=>s+p.value,0)/known.length;
+      // Extreme scraped values must not dominate a prediction.
+      const cap = ['average_start_timing','start_timing'].includes(key) ? .18 : key === 'exhibition_time' ? .6 : key.includes('percent') ? 55 : 6;
+      for (const p of known) out[p.lane] += weight * CAP(p.value - avg, -cap, cap);
+      included.push(key);
+    }
+    return { adjustment: out, included };
+  }
+  function probOfOrdered(laneWeights, first, second, third) {
+    // Separate 1st/2nd/3rd propensities; sum over all valid orders is normalized later.
+    return laneWeights[0][first] * laneWeights[1][second] * laneWeights[2][third];
+  }
+  function predict(race, venue, stats) {
+    if (!stats?.all?.n) throw Error('過去成績をまだ取得できていません。');
+    const entries = preRaceFields(race);
+    const preview = race.preview || null;
+    const { adjustment, included } = fieldAdjustments(entries, preview);
+    const laneWeights = [0,1,2].map((pos) => Object.fromEntries(entries.map(({lane}) => {
+      const actualCourse = nval(preview?.racers?.[lane]?.course_number) || lane;
+      const course = LANES.includes(actualCourse) ? actualCourse : lane;
+      const prior = positionPrior(stats, venue, pos, course);
+      // shrink raw ability so numeric inputs cannot drive unbounded probabilities
+      const ability = CAP(adjustment[lane], -2.7, 2.7);
+      const abilityFactor = pos === 0 ? 1 : pos === 1 ? .78 : .61;
+      return [lane, Math.exp(CAP(Math.log(prior / (1/6)) * 1.25 + ability * abilityFactor, -7, 7))];
+    })));
+    const candidates = [];
+    for (const a of entries) for (const b of entries) for (const c of entries) {
+      if (a.lane === b.lane || a.lane === c.lane || b.lane === c.lane) continue;
+      candidates.push({ combo: `${a.lane}-${b.lane}-${c.lane}`, first: a.lane,
+        second: b.lane, third: c.lane, weight: probOfOrdered(laneWeights, a.lane,b.lane,c.lane) });
+    }
+    const denom = candidates.reduce((s,c)=>s+c.weight,0);
+    if (!Number.isFinite(denom) || denom <= 0) throw Error('予想スコアを計算できませんでした。');
+    for (const c of candidates) { c.p = c.weight / denom; delete c.weight; }
+    candidates.sort((a,b)=>b.p-a.p);
+    const main = candidates.slice(0, 5);
+    // Upset scenarios: outside winner, non-overlap with main, but not purely implausible.
+    const alt = candidates.filter(c => c.first !== 1 && !main.some(m=>m.combo===c.combo));
+    const hole = alt.slice(0, 5);
+    const pOutside = candidates.filter(c=>c.first!==1).reduce((s,c)=>s+c.p,0);
+    const totalWinByLane = Object.fromEntries(entries.map(e=>[e.lane,candidates.filter(c=>c.first===e.lane).reduce((s,c)=>s+c.p,0)]));
+    const top3ByLane = Object.fromEntries(entries.map(e=>[e.lane,candidates.filter(c=>[c.first,c.second,c.third].includes(e.lane)).reduce((s,c)=>s+c.p,0)]));
+    const venueStats = stats.byVenue[venue] || newCounts();
+    const venueOutside = venueStats.n ? venueStats.upset / venueStats.n : (stats.all.n ? stats.all.upset/stats.all.n : null);
+    const label = pOutside >= .68 ? '波乱警戒' : pOutside >= .5 ? '混戦傾向' : 'イン優勢傾向';
+    return { main, hole, candidates, pOutside, venueOutside, label,
+      totalWinByLane, top3ByLane, included, dataCount: stats.all.n, venueCount: venueStats.n,
+      venueStats, entries };
+  }
+  function validation(history, venue) {
+    const days = Array.from(new Set(history.map(h=>h.date))).sort();
+    if (days.length < 10) return { error: '検証には最低10日分の確定成績が必要です。' };
+    const split = Math.max(7, Math.floor(days.length * .7));
+    if (split >= days.length) return { error: '検証用の期間が不足しています。' };
+    const cutoff = days[split];
+    const train = history.filter(h=>h.date < cutoff);
+    const test = history.filter(h=>h.date >= cutoff && h.venue === venue);
+    if (train.length < 100 || test.length < 10) return { error: '対象会場の検証レースまたは学習データが足りません。' };
+    const stats = makeStats(train);
+    const count = { n:0, top1:0, top5:0, hole5:0, head:0, payouts:0, stakes:0, payback:0,
+      incompletePayout:0, from:cutoff, to:days.at(-1), training:train.length };
+    for (const h of test) {
+      let pred;
+      try { pred = predict(h.race,h.venue,stats); } catch { continue; }
+      count.n++;
+      if (pred.main[0]?.combo===h.combo) count.top1++;
+      if (pred.main.some(p=>p.combo===h.combo)) count.top5++;
+      if (pred.hole.some(p=>p.combo===h.combo)) count.hole5++;
+      const f = Number(h.combo.split('-')[0]);
+      const bestHead = Number(pred.main[0]?.combo.split('-')[0]);
+      if (bestHead===f) count.head++;
+      if (h.amount === null) { count.incompletePayout++; continue; }
+      count.payouts++;
+      count.stakes += pred.main.length * 100;
+      if (pred.main.some(p=>p.combo===h.combo)) count.payback += h.amount;
+    }
+    return count;
+  }
+  root.BoatEngine = { API_FIRST_DATE, datePlus, historyDates, apiUrl,
+    historicalOddsUrl, oddsFromDocument, normalizeOdds, parseManualOdds, attachOdds,
+    racesFromDocument, comboFromResult,
+    extractHistory, makeStats, positionPrior, predict, validation, preRaceFields, nval };
+  if (typeof module !== 'undefined' && module.exports) module.exports = root.BoatEngine;
+})(typeof window !== 'undefined' ? window : globalThis);
+
+
+</script>
+<script>
+(function(){
+'use strict';
+const E = window.BoatEngine;
+const $ = id => document.getElementById(id);
+const esc = v => String(v ?? '').replace(/[&<>"']/g,s=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s]));
+const fmt = n => Number(n).toLocaleString('ja-JP');
+const pct = (n,d=1) => Number.isFinite(n) ? `${(n*100).toFixed(d)}%` : '—';
+const value = (x,d=1) => E.nval(x)===null ? '—' : Number(x).toFixed(d);
+const labels=['','桐生','戸田','江戸川','平和島','多摩川','浜名湖','蒲郡','常滑','津','三国','びわこ','住之江','尼崎','鳴門','丸亀','児島','宮島','徳山','下関','若松','芦屋','福岡','唐津','大村'];
+const d = new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Tokyo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
+$('date').value=d;$('date').max=d;
+labels.slice(1).forEach((l,i)=>$('stadium').add(new Option(`${String(i+1).padStart(2,'0')} ${l}`,String(i+1))));
+for(let i=1;i<=12;i++)$('raceNo').add(new Option(`${i}R`,String(i)));
+let currentRun = null;
+let active = null;
+const setStatus = (s,err=false)=>{ $('status').style.display='block';$('status').textContent=s;$('status').className=err?'error':''; };
+const setProgress = (done,total)=>{$('progress').style.display='block';$('bar').style.width=`${total ? (done/total)*100 : 0}%`;};
+const setBusy = b => {$('go').disabled=b;$('cancel').disabled=!b;};
+const laneTag = n => `<span class="lane lane${n}">${n}</span>`;
+const htmlCombo = c => String(c).split('-').map(n=>laneTag(Number(n))).join('<span class="dash">–</span>');
+const nowLabel = race => race?.result && E.comboFromResult(race.result) ? '確定結果あり' : race?.preview ? '直前情報あり' : '出走表データ';
+const officialUrl = (date,venue,raceNo,endpoint) => `https://www.boatrace.jp/owpc/pc/race/${endpoint}?rno=${raceNo}&jcd=${String(venue).padStart(2,'0')}&hd=${date.replaceAll('-','')}`;
+function showPicks(el,list){el.innerHTML=list.length?list.map((x,i)=>`<div class="pick ${el.id==='mainPicks'?'pick-main':''}"><span class="rank">${i+1}</span><div class="combo">${htmlCombo(x.combo)}</div><div class="chance">${pct(x.p,2)}<span>モデル内推定</span>${x.odds!==null && x.odds!==undefined?`<span>${Number(x.odds).toFixed(1)}倍／100円で${fmt(x.payout100)}円</span>`:'<span>オッズ未取得</span>'}</div></div>`).join(''):'指定倍率以上の穴候補はありません。';}
+function refreshPicks(){
+  if(!active)return;
+  const minOdds=Number($('minOdds').value);
+  const res=E.attachOdds(active.base,active.odds,minOdds);
+  active.display=res;
+  showPicks($('mainPicks'),res.main);showPicks($('holePicks'),res.hole);
+  $('oddsTag').textContent=`${res.oddsCount}/120組`;
+  $('oddsStatus').textContent=active.note + '\n' +
+    (res.holeUsesOdds?`穴候補：${minOdds}倍以上の組み合わせをスコア順に抽出（未校正の推定確率×倍率による参考順位）。`:'穴候補：倍率条件に合う取得済みデータがないため、1号艇以外が1着の統計候補を表示。')+
+    '\nオッズを掛けたスコアは検証済みの期待値や利益見込みではありません。';
+  const finalized=E.comboFromResult(active.item.race.result);
+  if(finalized){
+    const hitMain=res.main.some(p=>p.combo===finalized.key),hitHole=res.hole.some(p=>p.combo===finalized.key);
+    $('settledBody').innerHTML=`<div class="result-row"><strong>${htmlCombo(finalized.key)}</strong><span>3連単払戻：${finalized.amount===null?'不明':fmt(finalized.amount)+'円'}</span><span class="small-tag ${hitMain?'':'pill-warn'}">${hitMain?'本命5点内':hitHole?'穴候補内':'上位候補外'}</span></div><p class="note">過去レースの回顧表示です。レース後に取得されたオッズを予測時点の情報とは扱っていません。</p>`;
+  }
+}
+$('minOdds').addEventListener('change',refreshPicks);
+$('applyOdds').addEventListener('click',()=>{
+  if(!active){setStatus('先にレースの統計予測を実行してください。',true);return;}
+  const parsed=E.parseManualOdds($('manualOdds').value);
+  if(!parsed.count){setStatus('有効なオッズ入力がありません。例：1-2-3 15.2',true);return;}
+  active.odds={...active.odds,...parsed.values};
+  active.note=`手動入力を反映：${parsed.count}組。${parsed.invalid.length?'読み取れない行：'+parsed.invalid.join(', ')+'行。':'入力エラーなし。'} 入力時の倍率であり、締切確定倍率ではありません。`;
+  refreshPicks();setStatus('オッズを反映しました。');
+});
+$('clearOdds').addEventListener('click',()=>{if(!active)return;active.odds={};$('manualOdds').value='';active.note='オッズはクリア済みです。';refreshPicks();});
+function showResults(item,hist,results,success,fail,days){
+  const {race,venue,raceNo,date}=item;
+  const result=E.predict(race,venue,E.makeStats(hist));
+  const vStats=result.venueStats;
+  $('raceTitle').textContent=`${labels[venue]||`会場${venue}`} ${raceNo}R｜${race.subtitle||race.title||'出走表'}`;
+  $('raceMeta').textContent=`${date} ｜ 締切 ${race.closed_at || '未取得'} ｜ 成績データ ${success}/${days}日取得（取得失敗・未公開 ${fail}日）`;
+  const badge = $('raceTag'); badge.textContent=nowLabel(race);
+  badge.className='small-tag '+(E.comboFromResult(race.result)?'pill-warn':'');
+  $('metrics').innerHTML=[
+    [pct(result.pOutside),'1号艇以外の1着推定','モデル内の参考値'],
+    [result.label,'展開判断','実績からの相対評価'],
+    [fmt(result.dataCount),'過去確定レース','全国・取得対象期間'],
+    [fmt(result.venueCount),'この会場の件数','対象期間での確定件数']
+  ].map(([val,lab,detail])=>`<div class="metric"><div class="val">${esc(val)}</div><div class="label">${esc(lab)}</div><div class="detail">${esc(detail)}</div></div>`).join('');
+  const wind = E.nval(race.preview?.wind_speed);
+  const waves=E.nval(race.preview?.wave_height);
+  $('explain').textContent=`根拠：出走表の全国・当地成績、モーター・ボート成績、スタート指標と過去のコース別着順統計を組み合わせています。`+
+   (result.included.includes('exhibition_time')?' 展示タイム反映済み。':' 展示タイムは未反映です。')+
+   (wind!==null?` 直前風速 ${wind}m/s。`: '')+(waves!==null?` 波高 ${waves}cm。`: '') + (result.venueCount < 30 ? ' ※この会場の過去データ件数が少ないため、参考度は低めです。' : '');
+  $('officialButtons').innerHTML=`<a href="${officialUrl(date,venue,raceNo,'racelist')}" target="_blank" rel="noopener">公式出走表 ↗</a><a href="${officialUrl(date,venue,raceNo,'odds3t')}" target="_blank" rel="noopener">公式3連単オッズ ↗</a>`;
+  active={item,base:result,display:null,odds:{},note:'オッズ未取得。選択レースの公式オッズをご確認ください。'};
+  $('manualOdds').value='';refreshPicks();
+  $('laneDistribution').innerHTML=result.entries.map(e=>`<div class="rate-row">${laneTag(e.lane)}<div class="track"><div class="fill" style="width:${Math.min(100,result.totalWinByLane[e.lane]*100).toFixed(2)}%"></div></div><div class="rate-num">${pct(result.totalWinByLane[e.lane])}</div></div>`).join('');
+  $('historicSummary').innerHTML=`<div class="summary-grid" style="grid-template-columns:1fr 1fr"><div class="metric"><div class="val">${vStats.n ? pct(vStats.positions[0][1]/vStats.n):'—'}</div><div class="label">1コース1着率</div><div class="detail">コース別統計・実測</div></div><div class="metric"><div class="val">${vStats.n ? pct(vStats.upset/vStats.n):'—'}</div><div class="label">1号艇以外の1着率</div><div class="detail">枠番別統計・実測</div></div><div class="metric"><div class="val">${vStats.payouts?pct(vStats.bigPayout/vStats.payouts):'—'}</div><div class="label">3連単1万円以上率</div><div class="detail">払戻確認 ${vStats.payouts}R</div></div><div class="metric"><div class="val">${fmt(vStats.n)}</div><div class="label">集計レース数</div><div class="detail">この会場のみ</div></div></div><p class="note">実測統計は過去${days}日間で取得できた確定結果から集計したものです。1コースと1号艇は進入変更時には異なります。</p>`;
+  $('racersTable').innerHTML=`<table><thead><tr><th>枠</th><th>選手</th><th>全国勝率</th><th>当地勝率</th><th>モーター2連率</th><th>全国3連率</th><th>平均ST</th><th>展示</th><th>1着推定</th></tr></thead><tbody>${result.entries.map(({lane,data})=>`<tr><td>${laneTag(lane)}</td><td>${esc(data.name||'未取得')}</td><td>${value(data.national_win_rate,2)}</td><td>${value(data.local_win_rate,2)}</td><td>${value(data.motor_top_2_percent)}%</td><td>${value(data.national_top_3_percent)}%</td><td>${value(data.average_start_timing,2)}</td><td>${value(race.preview?.racers?.[lane]?.exhibition_time,2)}</td><td class="now">${pct(result.totalWinByLane[lane])}</td></tr>`).join('')}</tbody></table>`;
+  const verified=E.validation(hist,venue);
+  if(verified.error){$('validation').innerHTML=`<p class="note">${esc(verified.error)}</p>`;}
+  else {
+    $('validation').innerHTML=`<div class="summary-grid"><div class="metric"><div class="val">${pct(verified.top1/verified.n)}</div><div class="label">本命1点の的中率</div></div><div class="metric"><div class="val">${pct(verified.top5/verified.n)}</div><div class="label">本命5点の的中率</div></div><div class="metric"><div class="val">${pct(verified.hole5/verified.n)}</div><div class="label">穴5点の的中率</div></div><div class="metric"><div class="val">${verified.payouts?((verified.payback/verified.stakes)*100).toFixed(1)+'%':'—'}</div><div class="label">本命5点の仮定回収率</div><div class="detail">${verified.payouts}R / 各100円</div></div></div><p class="note">検証：${verified.from}～${verified.to}、${verified.n}R。学習に使用した過去結果：${fmt(verified.training)}R。払戻欠損のため回収率から除外：${verified.incompletePayout}R。</p>`;
+  }
+  const finalized=E.comboFromResult(race.result);
+  $('settled').classList.toggle('hidden',!finalized);
+  if(finalized){
+    const hitMain=result.main.some(p=>p.combo===finalized.key);
+    const hitHole=result.hole.some(p=>p.combo===finalized.key);
+    $('settledBody').innerHTML=`<div class="result-row"><strong>${htmlCombo(finalized.key)}</strong><span>3連単払戻：${finalized.amount===null?'不明':fmt(finalized.amount)+'円'}</span><span class="small-tag ${hitMain?'':'pill-warn'}">${hitMain?'本命5点内':hitHole?'穴5点内':'上位候補外'}</span></div><p class="note">この予測に対象レース当日の確定結果は学習データとして使用していません（当該レースより前の日だけで集計）。</p>`;
+  }
+  $('content').classList.remove('hidden');
+  const copy=document.createElement('button'); copy.type='button';copy.className='secondary';copy.textContent='予想をコピー';copy.onclick=async()=>{
+    const latest=active?.display||result;
+    const printInfo=`${date} ${labels[venue]} ${raceNo}R\n本命：${latest.main.map(x=>x.combo).join(' / ')}\n穴候補：${latest.hole.map(x=>x.combo+(x.odds?' '+x.odds+'倍':'')).join(' / ')}\n分析対象：直前${days}日\n注：未校正の統計推定、的中・利益を保証しません。`;
+    try { await navigator.clipboard.writeText(printInfo);copy.textContent='コピーしました';}
+    catch{ const t=document.createElement('textarea');t.value=printInfo;document.body.appendChild(t);t.select();document.execCommand('copy');t.remove();copy.textContent='コピーしました';}
+  };
+  $('officialButtons').appendChild(copy);
+  $('content').scrollIntoView({behavior:'smooth',block:'start'});
+}
+async function fetchJson(date,signal,url=E.apiUrl(date)){
+  const ctrl=new AbortController();
+  const abort=()=>ctrl.abort();
+  if(signal?.aborted)ctrl.abort();else signal?.addEventListener('abort',abort,{once:true});
+  const timer=setTimeout(()=>ctrl.abort(),25000);
+  try{
+    const r=await fetch(url,{signal:ctrl.signal,cache:'no-store'});
+    if(!r.ok)throw new Error(`HTTP ${r.status}`);
+    const json=await r.json();
+    if(!json?.programs?.stadiums)throw Error('データ形式が想定と異なります');
+    return json;
+  }finally{clearTimeout(timer);signal?.removeEventListener('abort',abort);}
+}
+async function launch(){
+  if(currentRun)currentRun.abort();
+  const d=$('date').value,venue=Number($('stadium').value),raceNo=Number($('raceNo').value),days=Number($('days').value);
+  if(!d||d<E.API_FIRST_DATE||d>($('date').max)){setStatus('2026年1月1日〜本日の範囲で日付を選択してください。',true);return;}
+  currentRun=new AbortController();const signal=currentRun.signal;
+  active=null;$('content').classList.add('hidden');setBusy(true);setProgress(0,1);setStatus('選択日の出走表を取得しています…');
+  try{
+    const doc=await fetchJson(d,signal);
+    const chosen=E.racesFromDocument(doc).find(item=>item.venue===venue&&item.raceNo===raceNo);
+    if(!chosen){
+      const available=E.racesFromDocument(doc).filter(item=>item.raceNo===raceNo);
+      const names=available.map(v=>labels[v.venue]).filter(Boolean).join('、');
+      throw Error(`${labels[venue]} ${raceNo}R の出走表が見つかりません。\n${names?`この日の${raceNo}R開催場：${names}`:'この日の対象レースが未公開、または非開催です。'}`);
+    }
+    const dates=E.historyDates(d,days);let idx=0,done=0,ok=0,failed=0;
+    const history=[];
+    if(!dates.length)throw Error('集計可能な過去日付がありません。2026年2月以降の日付を選択してください。');
+    setProgress(0,dates.length);
+    const concurrency=Math.min(4,dates.length);
+    const worker=async()=>{while(idx<dates.length&&!signal.aborted){
+      const at=dates[idx++];
+      try{const payload=await fetchJson(at,signal);history.push(...E.extractHistory(payload,at));ok++;}
+      catch(e){if(signal.aborted)throw e;failed++;}
+      done++;setStatus(`過去データを集計中… ${done}/${dates.length}日\n取得した確定レース：${fmt(history.length)}件`);setProgress(done,dates.length);
+    }};
+    await Promise.all(Array.from({length:concurrency},()=>worker()));
+    if(signal.aborted)return;
+    if(history.length<100)throw Error(`取得できた確定レースは ${history.length}件です。統計として不足しているため予測を停止しました。対象期間を広げるか後日試してください。`);
+    history.sort((a,b)=>a.date.localeCompare(b.date));
+    showResults(chosen,history,null,ok,failed,dates.length);
+    setStatus(`分析完了｜過去確定 ${fmt(history.length)}レース、${ok}日取得。`);
+    if (d < new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Tokyo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date())) {
+      try {
+        const odoc=await fetchJson(d,signal,E.historicalOddsUrl(d));
+        if(signal.aborted)return;
+        const odds=E.oddsFromDocument(odoc,venue,raceNo);
+        if(Object.keys(odds).length){
+          active.odds=odds;
+          active.note=`過去レースの翌日公開オッズ：${Object.keys(odds).length}組。取得時刻不明。レース前の取得値ではありません。`;
+          refreshPicks();setStatus(`予測・過去オッズの取得完了（${Object.keys(odds).length}組）。`);
+        } else {active.note='過去オッズAPIに対象レースの3連単がありません。手入力で補完できます。';refreshPicks();}
+      } catch(e){if(!signal.aborted){active.note=`過去オッズの自動取得不可（${e?.message||'通信エラー'}）。手入力で補完できます。`;refreshPicks();}}
+    }else if(active){active.note='当日のオッズは自動取得していません。公式3連単オッズを確認し、必要な組み合わせを手動入力してください。';refreshPicks();}
+  }catch(err){ if(signal.aborted){setStatus('取得を中止しました。');}else{setStatus(`取得または分析に失敗しました：${err?.message||'不明なエラー'}\nネット接続とデータの公開状況を確認してください。`,true);}}
+  finally{if(currentRun?.signal===signal)currentRun=null;setBusy(false);}
+}
+$('go').addEventListener('click',launch);
+$('cancel').addEventListener('click',()=>{currentRun?.abort();});
+})();
+</script>
+</body>
+</html>

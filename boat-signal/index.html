@@ -537,6 +537,137 @@ async function loadRaceCard(auto=false,force=false){
   }catch(err){if(ticket===entryTicket)clearEntry('出走表の取得・照合に失敗：'+(err?.message||'不明なエラー')+'。APIの公開状況や回線を確認してください。');}
 }
 
+
+const FORECAST_KEY='boat-signal-saved-v1';
+const validCombo=c=>typeof c==='string'&&/^[1-6]-[1-6]-[1-6]$/.test(c)&&new Set(c.split('-')).size===3;
+const predictionId=(date,venue,raceNo)=>date+'/'+venue+'/'+raceNo;
+let checkingSaved=false;
+function readForecasts(){
+  try{
+    const raw=JSON.parse(localStorage.getItem(FORECAST_KEY)||'[]');
+    return Array.isArray(raw)?raw.filter(r=>r&&typeof r==='object'&&
+      /^\d{4}-\d\d-\d\d$/.test(r.date)&&Number.isInteger(r.venue)&&r.venue>=1&&r.venue<=24&&
+      Number.isInteger(r.raceNo)&&r.raceNo>=1&&r.raceNo<=12&&
+      Array.isArray(r.main)&&r.main.length===5&&r.main.every(validCombo)&&
+      Array.isArray(r.hole)&&r.hole.length===5&&r.hole.every(validCombo)):[]; 
+  }catch{return [];}
+}
+function writeForecasts(data){
+  localStorage.setItem(FORECAST_KEY,JSON.stringify(data.slice(-150)));
+}
+function selectedPredictionId(){return predictionId($('date').value,Number($('stadium').value),Number($('raceNo').value));}
+function savedForecastForSelected(){return readForecasts().find(r=>r.id===selectedPredictionId());}
+function updateSaveStatus(){
+  const saved=savedForecastForSelected(),btn=$('saveForecast'),state=$('saveStatus');
+  const race=active?.item?.race,deadline=parseDeadline(race?.closed_at);
+  if(saved){btn.disabled=true;state.textContent='このレースの予想は保存済み。買い目は変更できません。';return;}
+  if(!active){btn.disabled=true;state.textContent='先に「統計を取得して予測」を実行してください。';return;}
+  if(active.item.date!==simpleDay()||!deadline){btn.disabled=true;state.textContent='当日の締切予定時刻が取得できるレースのみ保存できます。';return;}
+  if(E.comboFromResult(race?.result)){btn.disabled=true;state.textContent='すでに確定結果が出ています。予想保存はできません。';return;}
+  if(Date.now()>=deadline.getTime()){btn.disabled=true;state.textContent='締切予定時刻を過ぎたため保存できません。';return;}
+  btn.disabled=false;state.textContent='締切予定 '+jstClock(deadline)+'（日本時間）までに保存。締切間際の操作は避けてください。';
+}
+async function saveCurrentForecast(){
+  if(!active)return;
+  const {date,venue,raceNo}=active.item;
+  if(date!==simpleDay()){setStatus('予想保存は当日・締切前のレースだけに対応します。',true);return;}
+  const expected=predictionId(date,venue,raceNo);
+  if(savedForecastForSelected()){setStatus('このレースには保存済みの予想があります。後から上書きはできません。',true);return;}
+  const display=active.display||active.base;
+  if(display.main.length!==5||display.hole.length!==5){setStatus('本命と穴の5点が揃っていません。',true);return;}
+  const main=display.main.map(x=>x.combo),hole=display.hole.map(x=>x.combo);
+  if(!main.every(validCombo)||!hole.every(validCombo)||new Set([...main,...hole]).size!==10){setStatus('買い目に重複または不正な組み合わせがあります。',true);return;}
+  const button=$('saveForecast');button.disabled=true;
+  $('saveStatus').textContent='当日の出走表と締切を再確認しています…';
+  try{
+    // Fresh fetch before saving. Prevent retrospective saves and stale race data.
+    const doc=await getDaily(date,undefined,true);
+    const race=E.racesFromDocument(doc).find(x=>x.date===date&&x.venue===venue&&x.raceNo===raceNo);
+    const deadline=parseDeadline(race?.race?.closed_at);
+    if(!race||!deadline||Date.now()>=deadline.getTime()||E.comboFromResult(race.race.result))throw Error('締切前の有効な出走表・締切時刻を再確認できません。');
+    for(let i=1;i<=6;i++)if(Number(race.race.racers?.[i]?.number)!==Number(active.item.race.racers?.[i]?.number))throw Error('出走選手が予想時と変わりました。再分析してください。');
+    const saved=readForecasts();
+    if(saved.some(x=>x.id===expected))throw Error('このレースは既に保存済みです。');
+    const record={
+      version:1,id:expected,date,venue,raceNo,
+      raceName:String(race.race.title||race.race.subtitle||''),
+      racerNumbers:Object.fromEntries([1,2,3,4,5,6].map(i=>[i,Number(race.race.racers[i]?.number)||null])),
+      main,hole,deadline:race.race.closed_at,
+      savedAt:new Date().toISOString(),status:'pending',
+      result:null,checkedAt:null,notes:'買い目の記録。実際の購入なし。'
+    };
+    writeForecasts([...saved,record]);
+    setStatus('予想を端末に保存しました。本命5点と穴5点は固定され、結果が公開されたら自動照合します。');
+    renderSaved();
+  }catch(err){setStatus('保存できませんでした：'+(err?.message||'端末の保存領域または接続に問題があります。'),true);}
+  finally{updateSaveStatus();}
+}
+function renderSaved(){
+  const list=readForecasts().sort((a,b)=>b.savedAt.localeCompare(a.savedAt));
+  if(!list.length){
+    $('savedStatus').textContent='保存済み予想はありません。レース締切前に「本命5点＋穴5点を締切前に保存」を押してください。';
+    $('savedList').innerHTML='';return;
+  }
+  const confirmed=list.filter(x=>x.status==='confirmed');
+  const calculated=confirmed.filter(x=>Number.isFinite(x.result?.payout)&&!x.result?.refunded);
+  const mainHits=confirmed.filter(x=>x.result?.mainHit).length;
+  const holeHits=confirmed.filter(x=>x.result?.holeHit).length;
+  const mainReturn=calculated.reduce((n,r)=>n+(r.result.mainHit?r.result.payout:0),0);
+  const hypotheticalStake=calculated.length*500;
+  $('savedStatus').textContent='端末内に'+list.length+'レース保存済み／確定照合'+confirmed.length+
+    'レース（本命5点的中'+mainHits+'・穴5点的中'+holeHits+'）。'+
+    (hypotheticalStake?'払戻確認済み'+calculated.length+'レースの本命5点仮定回収率 '+(100*mainReturn/hypotheticalStake).toFixed(1)+'%':'仮定回収率：未計算')+
+    '。実際の購入・収支はいずれもありません。';
+  $('savedList').innerHTML=list.slice(0,40).map(r=>{
+    const actual=r.result?.combo;
+    const pending=r.status!=='confirmed';
+    const status=pending?'照合待ち':r.result.mainHit?'本命5点的中':r.result.holeHit?'穴5点的中':'買い目外';
+    const when=new Date(r.savedAt);
+    const savedAt=Number.isNaN(when.getTime())?'時刻不明':new Intl.DateTimeFormat('ja-JP',{timeZone:'Asia/Tokyo',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}).format(when);
+    return '<article class="record-item"><div class="record-row"><strong>'+esc(r.date)+' '+esc(labels[r.venue]||r.venue)+' '+r.raceNo+'R</strong><span class="record-state">'+esc(status)+'</span></div>'+
+    '<div class="record-picks">保存：'+esc(savedAt)+'　締切予定：'+esc(r.deadline||'不明')+'</div>'+
+    '<div class="record-picks"><b>本命：</b>'+r.main.map(esc).join(' / ')+'</div>'+
+    '<div class="record-picks"><b>穴：</b>'+r.hole.map(esc).join(' / ')+'</div>'+
+    (pending?'<div class="record-picks">確定結果が取得できるまで保留。レース終了後、公開データから照合します。</div>':
+    '<div class="record-picks"><b>結果：</b>'+htmlCombo(actual)+'　3連単払戻（100円）：'+(Number.isFinite(r.result.payout)?fmt(r.result.payout)+'円':'未取得')+
+      (r.result.refunded?'　※返還艇あり：回収率集計から除外':'')+'</div>')+
+    '<div class="record-picks"><a class="compact-link" target="_blank" rel="noopener noreferrer" href="'+officialUrl(r.date,r.venue,r.raceNo,'raceresult')+'">公式結果を開く ↗</a></div></article>';
+  }).join('');
+}
+async function checkSavedPredictions(silent=false){
+  if(checkingSaved)return;
+  const records=readForecasts();
+  const pending=records.filter(x=>x.status!=='confirmed'&&x.date<=simpleDay()&&
+    (!parseDeadline(x.deadline)||Date.now()>parseDeadline(x.deadline).getTime()));
+  if(!pending.length){renderSaved();return;}
+  checkingSaved=true;
+  if(!silent)$('savedStatus').textContent='保存済み予想のレース結果を照合中…';
+  try{
+    const days=Array.from(new Set(pending.map(x=>x.date))).sort().reverse().slice(0,15);
+    let changed=false;
+    for(const day of days){
+      let doc;
+      try{doc=await fetchJson(day);}catch{continue;}
+      for(const r of records.filter(x=>x.status!=='confirmed'&&x.date===day)){
+        const race=E.racesFromDocument(doc).find(x=>x.date===r.date&&x.venue===r.venue&&x.raceNo===r.raceNo);
+        const result=E.comboFromResult(race?.race?.result);
+        if(!result)continue;
+        // Registered entrants must match saved card, preventing a wrong-race match.
+        let same=true;
+        for(let i=1;i<=6;i++)if(r.racerNumbers?.[i]&&Number(r.racerNumbers[i])!==Number(race.race.racers?.[i]?.number))same=false;
+        if(!same)continue;
+        r.status='confirmed';r.checkedAt=new Date().toISOString();
+        r.result={combo:result.key,payout:result.amount,
+          mainHit:r.main.includes(result.key),holeHit:r.hole.includes(result.key),
+          refunded:Array.isArray(race.race.result?.refunds)&&race.race.result.refunds.length>0};
+        changed=true;
+      }
+    }
+    if(changed)writeForecasts(records);
+    if(!silent)setStatus(changed?'保存済み予想の照合結果を更新しました。':'まだ確定結果が公開されていないレースは照合待ちです。');
+  }finally{checkingSaved=false;renderSaved();}
+}
+
 function showPicks(el,list){el.innerHTML=list.length?list.map((x,i)=>{const racers=active?.item?.race?.racers||{};const names=x.combo.split("-").map(n=>esc(racers[n]?.name||"未取得")).join(" → ");return '<div class="pick '+(el.id==="mainPicks"?"pick-main":"")+'"><span class="rank">'+(i+1)+'</span><div><div class="combo">'+htmlCombo(x.combo)+'</div><div class="pick-names">'+names+'</div></div><div class="chance">'+pct(x.p,2)+'<span>モデル内推定</span>'+(x.odds!==null&&x.odds!==undefined?'<span>'+Number(x.odds).toFixed(1)+'倍／100円で'+fmt(x.payout100)+'円</span>':'<span>オッズ未取得</span>')+'</div></div>';}).join(""):"指定倍率以上の穴候補はありません。";}
 function refreshPicks(){
   if(!active)return;

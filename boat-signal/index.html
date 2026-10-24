@@ -42,7 +42,8 @@
 <div class="two"><section class="panel"><h2>◎ 本命予想｜3連単 5点</h2><p class="sub">モデル内の組み合わせ確率が高い順</p><div class="picklist" id="mainPicks"></div></section><section class="panel"><h2>◇ 穴・波乱シナリオ｜3連単 5点</h2><p class="sub">オッズ未取得時は1号艇以外の1着候補。オッズ取得後は指定倍率以上を優先</p><div class="picklist" id="holePicks"></div></section></div>
 <div class="two"><section class="panel"><h2>1着の推定分布</h2><p class="sub">各艇が1着になるモデル内の割合（実測勝率ではありません）</p><div id="laneDistribution"></div></section><section class="panel"><h2>対象会場の過去統計</h2><div id="historicSummary"></div></section></div>
 <section class="panel"><h2>出走選手と分析指標</h2><p class="sub">選手の当該レース出走表に記載された数値です。— は未取得です。</p><div id="racersTable" class="sailor-table"></div></section>
-<section class="panel"><h2>期間を分離した簡易バックテスト</h2><p class="sub">先の日付を検証に混ぜないよう、古い約70%の日付で学習し、新しい約30%の日付でテスト。同じ会場のテストレースを集計します。</p><div id="validation"></div><p class="note">回収率は「本命5点を各100円購入したと仮定」した過去検証値。手数料・投票不可・中止の差異を除き、未来の利益は予測しません。対象期間内の利用可能な払戻データだけを集計します。</p></section>
+<section class="panel"><h2>本人のコース別・当地・直近成績</h2><p class="sub">登録番号で本人の確定レースを照合。進入コースは展示進入があれば採用し、なければ枠番を仮採用。集計は選択した過去14〜90日間に限定され、通算成績ではありません。出走0件は—で表示。</p><div id="personalTable" class="sailor-table"></div><p class="note">出走数が少ないときは影響を小さく補正します。直近10走・30走は選択期間内で取得できた最大10・30走を使用し、件数を併記しています。</p></section>
+<section class="panel"><h2>期間を分離した簡易バックテスト</h2><p class="sub">先の日付を検証に混ぜないよう、古い約70%の日付で学習し、新しい約30%の日付でテスト。個人成績も学習期間内の確定成績だけを使用。同じ会場のテストレースを集計します。</p><div id="validation"></div><p class="note">回収率は「本命5点を各100円購入したと仮定」した過去検証値。手数料・投票不可・中止の差異を除き、未来の利益は予測しません。対象期間内の利用可能な払戻データだけを集計します。</p></section>
 <section class="panel hidden" id="settled"><h2>レース終了後の照合</h2><div id="settledBody"></div></section>
 </div>
 <footer class="footnotes"><div class="disclaimer"><strong>ご注意：</strong>これは無料の統計分析ツールです。オッズ表示は一部手入力または翌日公開の非公式履歴データです。購入時の確定倍率とは異なることがあります。表示する「推定確率」は未校正のモデル出力で、実際の的中確率ではありません。出走取消・進入変更・直前情報の反映遅れ等があります。最終情報は必ず公式サイトで確認してください。舟券の購入は20歳以上です。</div><p>出典：<a href="https://www.boatrace.jp/owpc/pc/extra/data/download.html" target="_blank" rel="noopener">BOAT RACE公式データダウンロード</a> ／ <a href="https://github.com/boatraceopenapi/api" target="_blank" rel="noopener">Boatrace Open API（MITライセンス、非公式）</a> ／ <a href="https://github.com/boatraceopenapi/api/blob/gh-pages/docs/v1/schema.md" target="_blank" rel="noopener">データ仕様</a> ／ <a href="https://github.com/turnmark/api" target="_blank" rel="noopener">過去3連単オッズ（非公式）</a></p><p>© 2026 BOAT SIGNAL ｜ 自作の分析プログラム。オフィシャル団体との提携・承認はありません。</p></footer>
@@ -196,8 +197,65 @@
         }
       }
     }
-    return { all, byVenue };
+    return { all, byVenue, racerByNumber:makeRacerHistory(history) };
   }
+
+  // Only completed races in the explicitly supplied pre-race history period.
+  // Never group by name; Japanese names are not unique stable identifiers.
+  function summarizeFinishes(rows){
+    const counts=[0,0,0,0,0,0,0];
+    for(const x of rows)if(Number.isInteger(x.place)&&x.place>=1&&x.place<=6)counts[x.place]++;
+    const n=rows.length;
+    return {n,counts,p1:n?counts[1]/n:null,p2:n?counts[2]/n:null,
+      p3:n?counts[3]/n:null,top3:n?(counts[1]+counts[2]+counts[3])/n:null};
+  }
+  function makeRacerHistory(history){
+    const index={};
+    for(const item of history){
+      const finished=item?.race?.result?.racers||{};
+      for(const lane of LANES){
+        const r=finished[lane],pre=item?.race?.racers?.[lane];
+        if(!r)continue;
+        const registration=nval(r.number)??nval(pre?.number);
+        const place=nval(r.place_number),course=nval(r.course_number);
+        if(!Number.isInteger(registration)||registration<=0||!Number.isInteger(place)||place<1||place>6)continue;
+        (index[registration]||=[]).push({date:item.date,venue:item.venue,
+          raceNo:item.raceNo,time:item.race?.closed_at||'',
+          place,course:LANES.includes(course)?course:null});
+      }
+    }
+    for(const rows of Object.values(index))
+      rows.sort((a,b)=>a.date.localeCompare(b.date)||a.time.localeCompare(b.time)
+        ||a.raceNo-b.raceNo||a.venue-b.venue);
+    return index;
+  }
+  function racerPersonalStats(stats,entry,venue,preview){
+    const id=nval(entry?.data?.number),actual=nval(preview?.racers?.[entry.lane]?.course_number);
+    const course=LANES.includes(actual)?actual:entry.lane;
+    const rows=id===null?[]:(stats.racerByNumber?.[id]||[]);
+    const courseRows=rows.filter(x=>x.course===course);
+    const venueRows=rows.filter(x=>x.venue===venue);
+    return {id,course,all:summarizeFinishes(rows),courseStats:summarizeFinishes(courseRows),
+      venue:summarizeFinishes(venueRows),
+      venueCourse:summarizeFinishes(courseRows.filter(x=>x.venue===venue)),
+      recent10:summarizeFinishes(rows.slice(-10)),recent30:summarizeFinishes(rows.slice(-30))};
+  }
+  function personalAdjust(person,pos,prior,entry){
+    // Shrink course/venue observations toward venue-aware baseline.
+    const add=(sample,w,k)=>sample.n>=3?
+      w*Math.log(CAP(((sample.counts[pos+1]+k*prior)/(sample.n+k))/prior,.2,5)):0;
+    let adjustment=add(person.courseStats,1.25,12)
+      +add(person.venueCourse,.4,24)+add(person.venue,.18,24);
+    const reference=CAP((nval(entry.data?.national_top_3_percent)??50)/100,.16,.9);
+    for(const [sample,w,k,minimum] of [[person.recent10,.15,16,5],[person.recent30,.20,25,12]]){
+      if(sample.n<minimum)continue;
+      const top3=sample.counts[1]+sample.counts[2]+sample.counts[3];
+      const post=(top3+k*reference)/(sample.n+k);
+      adjustment+=w*Math.log(CAP(post/reference,.35,2.7));
+    }
+    return CAP(adjustment,-1.15,1.15);
+  }
+
   function positionPrior(stats, venue, pos, course) {
     const g = stats.all;
     const v = stats.byVenue[venue] || newCounts();
@@ -246,14 +304,16 @@
     const entries = preRaceFields(race);
     const preview = race.preview || null;
     const { adjustment, included } = fieldAdjustments(entries, preview);
-    const laneWeights = [0,1,2].map((pos) => Object.fromEntries(entries.map(({lane}) => {
+    const personal=Object.fromEntries(entries.map(e=>[e.lane,racerPersonalStats(stats,e,venue,preview)]));
+    const laneWeights = [0,1,2].map((pos) => Object.fromEntries(entries.map(entry => {
+      const {lane}=entry;
       const actualCourse = nval(preview?.racers?.[lane]?.course_number) || lane;
       const course = LANES.includes(actualCourse) ? actualCourse : lane;
       const prior = positionPrior(stats, venue, pos, course);
       // shrink raw ability so numeric inputs cannot drive unbounded probabilities
       const ability = CAP(adjustment[lane], -2.7, 2.7);
       const abilityFactor = pos === 0 ? 1 : pos === 1 ? .78 : .61;
-      return [lane, Math.exp(CAP(Math.log(prior / (1/6)) * 1.25 + ability * abilityFactor, -7, 7))];
+      return [lane, Math.exp(CAP(Math.log(prior / (1/6)) * 1.25 + ability * abilityFactor + personalAdjust(personal[lane],pos,prior,entry), -7, 7))];
     })));
     const candidates = [];
     for (const a of entries) for (const b of entries) for (const c of entries) {
@@ -277,7 +337,7 @@
     const label = pOutside >= .68 ? '波乱警戒' : pOutside >= .5 ? '混戦傾向' : 'イン優勢傾向';
     return { main, hole, candidates, pOutside, venueOutside, label,
       totalWinByLane, top3ByLane, included, dataCount: stats.all.n, venueCount: venueStats.n,
-      venueStats, entries };
+      venueStats, entries, personal };
   }
   function validation(history, venue) {
     const days = Array.from(new Set(history.map(h=>h.date))).sort();
@@ -311,7 +371,7 @@
   root.BoatEngine = { API_FIRST_DATE, datePlus, historyDates, apiUrl,
     historicalOddsUrl, oddsFromDocument, normalizeOdds, parseManualOdds, attachOdds,
     racesFromDocument, comboFromResult,
-    extractHistory, makeStats, positionPrior, predict, validation, preRaceFields, nval };
+    extractHistory, makeStats, makeRacerHistory, racerPersonalStats, personalAdjust, positionPrior, predict, validation, preRaceFields, nval };
   if (typeof module !== 'undefined' && module.exports) module.exports = root.BoatEngine;
 })(typeof window !== 'undefined' ? window : globalThis);
 
@@ -443,7 +503,7 @@ function showResults(item,hist,results,success,fail,days){
   ].map(([val,lab,detail])=>`<div class="metric"><div class="val">${esc(val)}</div><div class="label">${esc(lab)}</div><div class="detail">${esc(detail)}</div></div>`).join('');
   const wind = E.nval(race.preview?.wind_speed);
   const waves=E.nval(race.preview?.wave_height);
-  $('explain').textContent=`根拠：出走表の全国・当地成績、モーター・ボート成績、スタート指標と過去のコース別着順統計を組み合わせています。`+
+  $('explain').textContent=`根拠：出走表の全国・当地成績、モーター・ボート成績、スタート指標、過去のコース別着順統計に、選手本人のコース別・当地・直近の確定成績を登録番号で照合して加味しています。`+
    (result.included.includes('exhibition_time')?' 展示タイム反映済み。':' 展示タイムは未反映です。')+
    (wind!==null?` 直前風速 ${wind}m/s。`: '')+(waves!==null?` 波高 ${waves}cm。`: '') + (result.venueCount < 30 ? ' ※この会場の過去データ件数が少ないため、参考度は低めです。' : '');
   $('officialButtons').innerHTML=`<a href="${officialUrl(date,venue,raceNo,'racelist')}" target="_blank" rel="noopener">公式出走表 ↗</a><a href="${officialUrl(date,venue,raceNo,'odds3t')}" target="_blank" rel="noopener">公式3連単オッズ ↗</a>`;
@@ -451,6 +511,8 @@ function showResults(item,hist,results,success,fail,days){
   $('manualOdds').value='';refreshPicks();
   $('laneDistribution').innerHTML=result.entries.map(e=>`<div class="rate-row">${laneTag(e.lane)}<div class="track"><div class="fill" style="width:${Math.min(100,result.totalWinByLane[e.lane]*100).toFixed(2)}%"></div></div><div class="rate-num">${pct(result.totalWinByLane[e.lane])}</div></div>`).join('');
   $('historicSummary').innerHTML=`<div class="summary-grid" style="grid-template-columns:1fr 1fr"><div class="metric"><div class="val">${vStats.n ? pct(vStats.positions[0][1]/vStats.n):'—'}</div><div class="label">1コース1着率</div><div class="detail">コース別統計・実測</div></div><div class="metric"><div class="val">${vStats.n ? pct(vStats.upset/vStats.n):'—'}</div><div class="label">1号艇以外の1着率</div><div class="detail">枠番別統計・実測</div></div><div class="metric"><div class="val">${vStats.payouts?pct(vStats.bigPayout/vStats.payouts):'—'}</div><div class="label">3連単1万円以上率</div><div class="detail">払戻確認 ${vStats.payouts}R</div></div><div class="metric"><div class="val">${fmt(vStats.n)}</div><div class="label">集計レース数</div><div class="detail">この会場のみ</div></div></div><p class="note">実測統計は過去${days}日間で取得できた確定結果から集計したものです。1コースと1号艇は進入変更時には異なります。</p>`;
+  const sampled=(p,n)=>n?pct(p):'—';
+  $('personalTable').innerHTML=`<table><thead><tr><th>枠/想定進入</th><th>レーサー</th><th>本人コース</th><th>1着率</th><th>2着率</th><th>3着率</th><th>3連対率</th><th>当地</th><th>当地3連対率</th><th>当地×コース</th><th>直近10走<br>1着/3連対</th><th>直近30走<br>1着/3連対</th></tr></thead><tbody>${result.entries.map(e=>{const p=result.personal[e.lane],c=p.courseStats,v=p.venue,vc=p.venueCourse;const recent=t=>t.n?`${t.n}走：${pct(t.p1)}/${pct(t.top3)}`:'—';return `<tr><td>${laneTag(e.lane)}/${p.course}コース</td><td>${esc(e.data.name||'未取得')}</td><td>${c.n}走</td><td>${sampled(c.p1,c.n)}</td><td>${sampled(c.p2,c.n)}</td><td>${sampled(c.p3,c.n)}</td><td>${sampled(c.top3,c.n)}</td><td>${v.n}走</td><td>${sampled(v.top3,v.n)}</td><td>${vc.n}走・${sampled(vc.top3,vc.n)}</td><td>${recent(p.recent10)}</td><td>${recent(p.recent30)}</td></tr>`;}).join('')}</tbody></table>`;
   $('racersTable').innerHTML=`<table><thead><tr><th>枠</th><th>選手</th><th>登録番号</th><th>級別</th><th>全国勝率</th><th>当地勝率</th><th>モーター2連率</th><th>全国3連率</th><th>平均ST</th><th>展示</th><th>1着推定</th></tr></thead><tbody>${result.entries.map(({lane,data})=>`<tr><td>${laneTag(lane)}</td><td>${esc(data.name||'未取得')}</td><td>${esc(data.number??'—')}</td><td>${esc(data.rank_number_source||'—')}</td><td>${value(data.national_win_rate,2)}</td><td>${value(data.local_win_rate,2)}</td><td>${value(data.motor_top_2_percent)}%</td><td>${value(data.national_top_3_percent)}%</td><td>${value(data.average_start_timing,2)}</td><td>${value(race.preview?.racers?.[lane]?.exhibition_time,2)}</td><td class="now">${pct(result.totalWinByLane[lane])}</td></tr>`).join('')}</tbody></table>`;
   const verified=E.validation(hist,venue);
   if(verified.error){$('validation').innerHTML=`<p class="note">${esc(verified.error)}</p>`;}

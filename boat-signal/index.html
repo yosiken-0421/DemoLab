@@ -28,7 +28,7 @@
 <body>
 <div class="wrap">
 <header class="header"><div class="brand"><div class="logo">≋</div><div><div class="brand-name">BOAT SIGNAL</div><div class="brand-sub">3連単 ｜ 統計予測・波乱分析</div></div></div><div class="source-line">データ: Boatrace Open API（非公式）<a href="https://www.boatrace.jp/owpc/pc/extra/data/download.html" target="_blank" rel="noopener">BOAT RACE 公式データ</a></div></header>
-<section class="hero"><div class="eyebrow">BOAT RACE • 3-REN-TAN ANALYTICS</div><h1>本命を読む。<br>波乱も想定する。</h1><p class="intro">出走表の選手・モーター成績と、過去レースの着順統計から全通りを計算。本命5点、穴シナリオ5点を分けて表示します。過去レースのオッズは翌日公開データから取得を試み、当日は公式ページのオッズを手入力できます。数字が取得できない場合は推測しません。</p></section>
+<section class="hero"><div class="eyebrow">BOAT RACE • 3-REN-TAN ANALYTICS</div><h1>本命を読む。<br>波乱も想定する。</h1><p class="intro">出走表の選手・モーター成績と、過去レースの着順統計から全通りを計算。本命5点、穴シナリオ5点を分けて表示します。当日の3連単オッズは締切約5分前に記録される外部データから自動取得します。公開前は未取得と表示し、公式ページの倍率も確認できます。数字が取得できない場合は推測しません。</p></section>
 <section class="panel" aria-label="予測条件"><h2>レース選択</h2><div class="control-grid">
 <div class="field"><label for="date">開催日</label><input type="date" id="date" min="2026-01-01" /></div>
 <div class="field"><label for="stadium">レース場</label><select id="stadium"></select></div>
@@ -83,7 +83,7 @@
 <section class="panel"><h2>期間を分離した簡易バックテスト</h2><p class="sub">先の日付を検証に混ぜないよう、古い約70%の日付を学習に、新しい約30%の日付を検証に使い、本人実績あり・なしを同じレースで比較します。検証日の結果は予測に使いません。</p><button type="button" class="secondary" id="exportAudit" disabled>検証明細をCSV保存</button><div id="validation"></div><p class="note">回収率は「本命5点を各100円購入したと仮定」した過去検証値。手数料・投票不可・中止の差異を除き、未来の利益は予測しません。対象期間内の利用可能な払戻データだけを集計します。</p></section>
 <section class="panel hidden" id="settled"><h2>レース終了後の照合</h2><div id="settledBody"></div></section>
 </div>
-<footer class="footnotes"><div class="disclaimer"><strong>ご注意：</strong>これは無料の統計分析ツールです。オッズ表示は一部手入力または翌日公開の非公式履歴データです。購入時の確定倍率とは異なることがあります。表示する「推定確率」は未校正のモデル出力で、実際の的中確率ではありません。出走取消・進入変更・直前情報の反映遅れ等があります。最終情報は必ず公式サイトで確認してください。舟券の購入は20歳以上です。</div><p>出典：<a href="https://www.boatrace.jp/owpc/pc/extra/data/download.html" target="_blank" rel="noopener">BOAT RACE公式データダウンロード</a> ／ <a href="https://github.com/boatraceopenapi/api" target="_blank" rel="noopener">Boatrace Open API（MITライセンス、非公式）</a> ／ <a href="https://github.com/boatraceopenapi/api/blob/gh-pages/docs/v1/schema.md" target="_blank" rel="noopener">データ仕様</a> ／ <a href="https://github.com/turnmark/api" target="_blank" rel="noopener">過去3連単オッズ（非公式）</a></p><p>© 2026 BOAT SIGNAL ｜ 自作の分析プログラム。オフィシャル団体との提携・承認はありません。</p></footer>
+<footer class="footnotes"><div class="disclaimer"><strong>ご注意：</strong>これは無料の統計分析ツールです。オッズ表示はBoatraceCSVの締切約5分前の非公式観測値または手入力です。配信遅れ・欠損・倍率変動があります。購入時の確定倍率とは異なることがあります。表示する「推定確率」は未校正のモデル出力で、実際の的中確率ではありません。出走取消・進入変更・直前情報の反映遅れ等があります。最終情報は必ず公式サイトで確認してください。舟券の購入は20歳以上です。</div><p>出典：<a href="https://www.boatrace.jp/owpc/pc/extra/data/download.html" target="_blank" rel="noopener">BOAT RACE公式データダウンロード</a> ／ <a href="https://github.com/boatraceopenapi/api" target="_blank" rel="noopener">Boatrace Open API（MITライセンス、非公式）</a> ／ <a href="https://github.com/boatraceopenapi/api/blob/gh-pages/docs/v1/schema.md" target="_blank" rel="noopener">データ仕様</a> ／ <a href="https://github.com/BoatraceCSV/boatracecsv.github.io" target="_blank" rel="noopener">3連単観測オッズ（非公式）</a></p><p>© 2026 BOAT SIGNAL ｜ 自作の分析プログラム。オフィシャル団体との提携・承認はありません。</p></footer>
 </div>
 <script>
 /* Boat Signal - statistical trifecta estimator.
@@ -502,6 +502,7 @@ const value = (x,d=1) => E.nval(x)===null ? '—' : Number(x).toFixed(d);
 const labels=['','桐生','戸田','江戸川','平和島','多摩川','浜名湖','蒲郡','常滑','津','三国','びわこ','住之江','尼崎','鳴門','丸亀','児島','宮島','徳山','下関','若松','芦屋','福岡','唐津','大村'];
 const d = new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Tokyo',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
 $('date').value=d;$('date').max=d;
+$('minOdds').value='30';$('quickMinOdds').value='30';
 labels.slice(1).forEach((l,i)=>$('stadium').add(new Option(`${String(i+1).padStart(2,'0')} ${l}`,String(i+1))));
 for(let i=1;i<=12;i++)$('raceNo').add(new Option(`${i}R`,String(i)));
 let currentRun = null;
@@ -683,7 +684,12 @@ async function loadRaceCard(auto=false,force=false){
     const venues=Array.from(new Set(all.filter(x=>x.date===date).map(x=>x.venue))).sort((a,b)=>a-b);
     if(!venues.length)throw Error('指定日と一致する出走表が取得できません。');
     let v=venue;
-    if(auto&&!venues.includes(v)){v=venues[0];$('stadium').value=String(v);}
+    if(auto&&!venues.includes(v)){
+      v=venues[0];$('stadium').value=String(v);
+      syncLive();
+      $('quickOfficialOdds').href=officialUrl(date,v,raceNo,'odds3t');
+      fetchObservedOdds({quiet:true}).catch(()=>{});
+    }
     const item=all.find(x=>x.date===date&&x.venue===v&&x.raceNo===raceNo);
     if(!item){
       clearEntry((labels[v]||v)+' '+raceNo+'Rの出走表は未掲載か非開催です。指定日に出走表がある会場：'+venues.map(n=>labels[n]||n).join('、'));
@@ -896,9 +902,11 @@ async function fetchObservedOdds({quiet=false}={}){
     $('quickOddsStatus').textContent='3連単の実オッズを取得中…（BoatraceCSV）';
   }
   const primary=E.oddsCsvUrl(date),secondary=fallbackCsvUrl(date);
+  const raw=primary.replace('https://boatracecsv.github.io/data/',
+    'https://raw.githubusercontent.com/BoatraceCSV/boatracecsv.github.io/main/data/');
   let parsed=null,lastError='';
   try{
-    for(const url of [primary,secondary]){
+    for(const url of [primary,secondary,raw]){
       try{
         const csv=await oddsCsvFetch(date,url);
         const data=E.csvOddsForRace(csv,date,venue,raceNo);

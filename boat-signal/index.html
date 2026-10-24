@@ -1163,25 +1163,78 @@ $('exportAudit').addEventListener('click',()=>{
 
 
 
-$('exportSaved').addEventListener('click',()=>{
+
+function savedForecastCsv(){
   const records=readForecasts().sort((a,b)=>a.savedAt.localeCompare(b.savedAt));
-  if(!records.length)return;
+  if(!records.length)return '';
   const header=['レース日','会場番号','レース番号','予想保存日時UTC','当初締切予定JST','本命5点','穴5点',
-    '照合結果','実際の3連単','3連単払戻100円','本命的中','穴的中','返還を含む','照合日時UTC','購入なし'];
-  const rows=records.map(r=>[r.date,r.venue,r.raceNo,r.savedAt,r.deadline,
-    r.main.join(' / '),r.hole.join(' / '),r.status==='confirmed'?'確定照合':'照合待ち',
+    '記録種別','照合結果','実際の3連単','3連単払戻100円','本命的中','穴的中','返還を含む','照合日時UTC','実際の購入'];
+  const rows=records.map(r=>[
+    r.date,r.venue,r.raceNo,r.savedAt,r.deadline,
+    r.main.join(' / '),r.hole.join(' / '),
+    r.source==='auto_predeadline'?'締切前自動保存':r.source==='manual_postrace'?'事後申告（予想検証対象外）':'手動保存',
+    r.status==='confirmed'?'確定照合':'照合待ち',
     r.result?.combo||'',r.result?.payout??'',
     r.status==='confirmed'?(r.result?.mainHit?'はい':'いいえ'):'未判定',
     r.status==='confirmed'?(r.result?.holeHit?'はい':'いいえ'):'未判定',
     r.status==='confirmed'?(r.result?.refunded?'はい':'いいえ'):'未判定',
-    r.checkedAt||'','実際の購入なし']);
-  const q=x=>'"'+String(x??'').replace(/"/g,'""')+'"';
-  const csv='\uFEFF'+[header,...rows].map(xs=>xs.map(q).join(',')).join('\r\n');
+    r.checkedAt||'','購入なし']);
+  const escaped=x=>'"'+String(x??'').replace(/"/g,'""')+'"';
+  return '\uFEFF'+[header,...rows].map(row=>row.map(escaped).join(',')).join('\r\n');
+}
+function showSavedCsvPreview(csv){
+  $('savedCsvTextarea').value=csv;
+  $('savedCsvPreview').classList.remove('hidden');
+}
+function ordinaryCsvDownload(csv,filename){
   const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
-  const a=document.createElement('a');
-  a.href=url;a.download='boat-signal-saved-predictions.csv';
-  document.body.appendChild(a);a.click();a.remove();
-  setTimeout(()=>URL.revokeObjectURL(url),5000);
+  const link=document.createElement('a');
+  link.href=url;link.download=filename;
+  document.body.appendChild(link);link.click();link.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),30000);
+}
+$('exportSaved').addEventListener('click',async()=>{
+  const csv=savedForecastCsv();
+  if(!csv){$('savedExportStatus').textContent='保存履歴がないためCSVを作成できません。';return;}
+  const filename='boat-signal-saved-predictions.csv';
+  showSavedCsvPreview(csv);
+  // The Web Share API must be invoked directly from the click handler, not after
+  // a network fetch, otherwise iOS Safari may reject the user activation.
+  try{
+    if(typeof navigator.share==='function'&&typeof File!=='undefined'){
+      const file=new File([csv],filename,{type:'text/csv;charset=utf-8'});
+      if(typeof navigator.canShare!=='function'||navigator.canShare({files:[file]})){
+        await navigator.share({title:'BOAT SIGNAL 予想履歴',files:[file]});
+        $('savedExportStatus').textContent='共有メニューを開きました。「ファイルに保存」を選ぶとiPhoneにCSVを保存できます。';
+        return;
+      }
+    }
+  }catch(err){
+    if(err?.name==='AbortError'){
+      $('savedExportStatus').textContent='共有がキャンセルされました。必要ならもう一度「CSVを共有・保存」を押すか「CSVをコピー」をご利用ください。';
+      return;
+    }
+    $('savedExportStatus').textContent='共有できなかったため通常ダウンロードを試します。';
+  }
+  try{
+    ordinaryCsvDownload(csv,filename);
+    $('savedExportStatus').textContent='CSVのダウンロードを開始しました。iPhoneで保存されない場合は「CSVをコピー」を押してください。下にCSVの内容も表示しています。';
+  }catch(err){
+    $('savedExportStatus').textContent='自動ダウンロード失敗：'+(err?.message||'未対応のブラウザ')+'。「CSVをコピー」か下の文字列を利用してください。';
+  }
+});
+$('copySaved').addEventListener('click',async()=>{
+  const csv=savedForecastCsv();
+  if(!csv){$('savedExportStatus').textContent='保存済みデータがありません。';return;}
+  showSavedCsvPreview(csv);
+  try{
+    if(!navigator.clipboard?.writeText)throw Error('クリップボードAPIを利用できません');
+    await navigator.clipboard.writeText(csv);
+    $('savedExportStatus').textContent='CSVをコピーしました。メモや表計算アプリに貼り付けられます。';
+  }catch{
+    $('savedCsvTextarea').focus();$('savedCsvTextarea').select();
+    $('savedExportStatus').textContent='下のCSV文字列を選択しました。「コピー」で内容を保存してください。';
+  }
 });
 
 $('saveForecast').addEventListener('click',saveCurrentForecast);

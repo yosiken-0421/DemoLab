@@ -64,9 +64,13 @@
 <div class="live-youtube"><label for="liveYoutubeUrl">YouTubeのライブ動画URL（映像だけを画面いっぱいに再生）</label><div class="live-youtube-row"><input id="liveYoutubeUrl" type="url" inputmode="url" placeholder="https://www.youtube.com/watch?v=..." autocomplete="off" spellcheck="false"/><button id="playYoutube" type="button">動画を表示</button></div></div>
 <p class="note">平和島は公式YouTubeライブチャンネルを優先します。配信中でない場合は視聴できません。ほかの会場はBOATCASTを公式ページで開けます。YouTube動画URLがあれば画面内の大きなプレーヤーで再生できます。映像には遅延があるため購入締切は公式時刻を確認してください。</p>
 </section>
-<section class="panel" id="savedPanel"><div class="result-row" style="justify-content:space-between"><h2 style="margin:0">予想保存・レース後の自動照合</h2><div class="live-actions" style="margin:0"><button type="button" class="secondary" id="checkSaved">保存した予想を照合</button><button type="button" class="secondary" id="exportSaved" disabled>保存・的中記録をCSV出力</button></div></div>
-<p class="sub" style="margin-top:12px">レース締切前に本命5点・穴5点を端末に保存。サイトを開いている間は約2分ごとに結果を確認し、閉じていた場合は次に開いたときに照合します。無料の端末内保存で、ほかの端末やプライベートブラウズには同期されません。</p>
-<div id="savedStatus" class="entry-check">保存済みの予想を確認しています…</div><div id="savedList"></div>
+<section class="panel" id="savedPanel"><div class="result-row" style="justify-content:space-between"><h2 style="margin:0">予想保存・レース後の自動照合</h2><div class="live-actions" style="margin:0"><button type="button" class="secondary" id="checkSaved">保存した予想を照合</button><button type="button" class="secondary" id="exportSaved" disabled>CSVを共有・保存（iPhone対応）</button><button type="button" class="secondary" id="copySaved" disabled>CSVをコピー</button></div></div>
+<p class="sub" style="margin-top:12px">予想を締切前に計算できた時点で本命5点を端末内へ自動保存します。穴候補はその時点で倍率を確認できたものだけを記録し、保存済みの買い目は書き換えません。結果公開後は約2分ごと・再訪時に自動照合。Safariとアプリ内ブラウザなど、ブラウザが違うと保存履歴は同期されません。</p>
+<div id="savedStatus" class="entry-check">保存済みの予想を確認しています…</div>
+<p id="savedExportStatus" class="records-note">iPhoneでは「CSVを共有・保存」→ 共有メニュー →「ファイルに保存」を選択してください。できない場合は「CSVをコピー」を利用できます。</p>
+<div id="savedCsvPreview" class="hidden"><label for="savedCsvTextarea" class="help">CSVの内容（長押ししてコピーもできます）</label>
+<textarea id="savedCsvTextarea" class="odds-input" rows="6" readonly></textarea></div>
+<div id="savedList"></div>
 </section>
 <div id="content" class="hidden">
 <section class="panel"><div class="result-row" style="justify-content:space-between"><h2 id="raceTitle" style="margin-bottom:8px"></h2><span id="raceTag" class="small-tag"></span></div><div class="sub" id="raceMeta"></div><div class="summary-grid" id="metrics"></div><div class="tip" id="explain"></div><div class="result-row" id="officialButtons"></div><div class="live-actions"><button type="button" class="primary" id="saveForecast">本命5点＋取得済み穴候補を締切前に保存</button><span id="saveStatus" class="help">予想の保存は、締切時刻より前のみ可能です。</span></div></section>
@@ -722,13 +726,44 @@ function savedForecastForSelected(){return readForecasts().find(r=>r.id===select
 function updateSaveStatus(){
   const saved=savedForecastForSelected(),btn=$('saveForecast'),state=$('saveStatus');
   const race=active?.item?.race,deadline=parseDeadline(race?.closed_at);
-  if(saved){btn.disabled=true;state.textContent='このレースの予想は保存済み。買い目は変更できません。';return;}
+  if(saved){btn.disabled=true;state.textContent='このレースは'+(saved.source==='auto_predeadline'?'締切前に自動保存済み':'保存済み')+'。記録した買い目は変更できません。';return;}
   if(!active){btn.disabled=true;state.textContent='先に「統計を取得して予測」を実行してください。';return;}
   if(active.item.date!==simpleDay()||!deadline){btn.disabled=true;state.textContent='当日の締切予定時刻が取得できるレースのみ保存できます。';return;}
   if(E.comboFromResult(race?.result)){btn.disabled=true;state.textContent='すでに確定結果が出ています。予想保存はできません。';return;}
   if(Date.now()>=deadline.getTime()){btn.disabled=true;state.textContent='締切予定時刻を過ぎたため保存できません。';return;}
   btn.disabled=false;state.textContent='締切予定 '+jstClock(deadline)+'（日本時間）までに保存。締切間際の操作は避けてください。';
 }
+
+function autoSavePredictionBeforeDeadline(){
+  if(!active)return false;
+  const {date,venue,raceNo,race}=active.item;
+  const deadline=parseDeadline(race?.closed_at);
+  if(date!==simpleDay()||!deadline||Date.now()>=deadline.getTime()||E.comboFromResult(race?.result))return false;
+  const id=predictionId(date,venue,raceNo);
+  if(readForecasts().some(r=>r.id===id))return false;
+  const selections=active.display||active.base;
+  const main=(selections.main||[]).map(p=>p.combo);
+  const hole=(selections.hole||[]).map(p=>p.combo);
+  if(main.length!==5||hole.length>5||!main.every(validCombo)||!hole.every(validCombo)||
+      new Set([...main,...hole]).size!==main.length+hole.length)return false;
+  // A valid 6-boat roster is required. Do not backfill after the deadline.
+  const racerNumbers={};
+  for(let i=1;i<=6;i++){
+    const num=E.nval(race.racers?.[i]?.number);
+    if(!Number.isInteger(num)||num<=0)return false;
+    racerNumbers[i]=num;
+  }
+  const record={version:2,id,date,venue,raceNo,
+    raceName:String(race.title||race.subtitle||''),
+    racerNumbers,main,hole,deadline:race.closed_at,
+    savedAt:new Date().toISOString(),source:'auto_predeadline',
+    status:'pending',result:null,checkedAt:null,
+    notes:'端末内の締切前モデル計算時点の自動記録。購入なし。サーバーでの時刻証明ではありません。'};
+  writeForecasts([...readForecasts(),record]);
+  renderSaved();updateSaveStatus();
+  return true;
+}
+
 async function saveCurrentForecast(){
   if(!active)return;
   const {date,venue,raceNo}=active.item;
@@ -767,8 +802,9 @@ async function saveCurrentForecast(){
 function renderSaved(){
   const list=readForecasts().sort((a,b)=>b.savedAt.localeCompare(a.savedAt));
   $('exportSaved').disabled=!list.length;
+  $('copySaved').disabled=!list.length;
   if(!list.length){
-    $('savedStatus').textContent='保存済み予想はありません。レース締切前に「本命5点＋穴5点を締切前に保存」を押してください。';
+    $('savedStatus').textContent='保存済み予想はありません。締切前に統計予想を実行すると、本命5点が自動保存されます。';
     $('savedList').innerHTML='';return;
   }
   const confirmed=list.filter(x=>x.status==='confirmed');
@@ -1004,6 +1040,7 @@ function showResults(item,hist,results,success,fail,days){
   active={item,base:result,display:null,odds:{},manualOdds:{},note:'オッズ自動取得を確認しています。'};updateSaveStatus();
   $('manualOdds').value='';refreshPicks();
   syncObservedOddsToActive();
+  try{autoSavePredictionBeforeDeadline();}catch(err){$('saveStatus').textContent='自動保存できません：'+(err?.message||'ブラウザの保存設定を確認してください。');}
   $('laneDistribution').innerHTML=result.entries.map(e=>`<div class="rate-row">${laneTag(e.lane)}<div class="track"><div class="fill" style="width:${Math.min(100,result.totalWinByLane[e.lane]*100).toFixed(2)}%"></div></div><div class="rate-num">${pct(result.totalWinByLane[e.lane])}</div></div>`).join('');
   $('historicSummary').innerHTML=`<div class="summary-grid" style="grid-template-columns:1fr 1fr"><div class="metric"><div class="val">${vStats.n ? pct(vStats.positions[0][1]/vStats.n):'—'}</div><div class="label">1コース1着率</div><div class="detail">コース別統計・実測</div></div><div class="metric"><div class="val">${vStats.n ? pct(vStats.upset/vStats.n):'—'}</div><div class="label">1号艇以外の1着率</div><div class="detail">枠番別統計・実測</div></div><div class="metric"><div class="val">${vStats.payouts?pct(vStats.bigPayout/vStats.payouts):'—'}</div><div class="label">3連単1万円以上率</div><div class="detail">払戻確認 ${vStats.payouts}R</div></div><div class="metric"><div class="val">${fmt(vStats.n)}</div><div class="label">集計レース数</div><div class="detail">この会場のみ</div></div></div><p class="note">実測統計は過去${days}日間で取得できた確定結果から集計したものです。1コースと1号艇は進入変更時には異なります。</p>`;
   const sampled=(p,n)=>n?pct(p):'—';

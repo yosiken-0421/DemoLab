@@ -344,10 +344,13 @@ const officialUrl = (date,venue,raceNo,endpoint) => `https://www.boatrace.jp/owp
 let cachedDay=null, entryTicket=0;
 const jstNow=()=>new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Tokyo',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'}).format(new Date());
 const simpleDay=()=>jstNow().slice(0,10);
-async function getDaily(date,signal){
-  if(cachedDay?.date===date)return cachedDay.doc;
+async function getDaily(date,signal,force=false){
+  // On the race day, do not silently reuse an old snapshot.
+  const fresh=cachedDay?.date===date &&
+    (date!==simpleDay() || Date.now()-cachedDay.fetchedAt < 60*1000);
+  if(!force && fresh)return cachedDay.doc;
   const doc=await fetchJson(date,signal);
-  cachedDay={date,doc};
+  cachedDay={date,doc,fetchedAt:Date.now()};
   return doc;
 }
 function clearEntry(message,warning=true){
@@ -373,15 +376,15 @@ function showRaceCard(item,date,source){
     const name=r.name||'未取得';
     return '<article class="entry-card"><div class="entry-head">'+laneTag(n)+'<span class="entry-name">'+esc(name)+'</span></div><div class="entry-info">登録番号 '+esc(number)+' ・ 級別 '+esc(grade)+'</div></article>';
   }).join('');
-  $('entrySource').innerHTML='取得時刻（端末の日本時間）：'+esc(jstNow())+'　／　配信元の最終更新時刻：不明<br>出典：<a href="'+E.apiUrl(date)+'" target="_blank" rel="noopener">Boatrace Open APIの対象日データ ↗</a>　／　<a href="'+officialUrl(date,venue,raceNo,'racelist')+'" target="_blank" rel="noopener">公式出走表と照合 ↗</a>。非公式APIの内容が最新・正確とは限りません。';
+  $('entrySource').innerHTML='データ受信時刻（日本時間）：'+esc(new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Tokyo',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'}).format(new Date(cachedDay?.fetchedAt||Date.now())))+'　／　配信元の最終更新時刻：不明<br>出典：<a href="'+E.apiUrl(date)+'" target="_blank" rel="noopener">Boatrace Open APIの対象日データ ↗</a>　／　<a href="'+officialUrl(date,venue,raceNo,'racelist')+'" target="_blank" rel="noopener">公式出走表と照合 ↗</a>。非公式APIの内容が最新・正確とは限りません。';
 }
-async function loadRaceCard(auto=false){
+async function loadRaceCard(auto=false,force=false){
   const ticket=++entryTicket,date=$('date').value,raceNo=Number($('raceNo').value);
   const venue=Number($('stadium').value);
   clearEntry('選択日の出走表を取得しています…',false);
-  if(!date||date>E.API_FIRST_DATE&&date>simpleDay()) {clearEntry('未来の日付の出走表は確認できません。');return;}
+  if(!date||date<E.API_FIRST_DATE||date>simpleDay()) {clearEntry('2026年1月1日〜今日までの日付を選んでください。');return;}
   try{
-    const doc=await getDaily(date);
+    const doc=await getDaily(date,undefined,force);
     if(ticket!==entryTicket)return;
     const all=E.racesFromDocument(doc);
     const venues=Array.from(new Set(all.filter(x=>x.date===date).map(x=>x.venue))).sort((a,b)=>a-b);
@@ -534,7 +537,7 @@ async function launch(){
   finally{if(currentRun?.signal===signal)currentRun=null;setBusy(false);}
 }
 $('go').addEventListener('click',launch);
-$('checkEntries').addEventListener('click',()=>loadRaceCard());
+$('checkEntries').addEventListener('click',()=>loadRaceCard(false,true));
 ['date','stadium','raceNo'].forEach(id=>$(id).addEventListener('change',()=>loadRaceCard()));
 loadRaceCard(true);
 $('cancel').addEventListener('click',()=>{currentRun?.abort();});

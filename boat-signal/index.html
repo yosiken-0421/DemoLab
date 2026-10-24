@@ -496,20 +496,98 @@ function refreshSchedule(){
   if(sec<=0)counter.textContent='予定時刻を経過';
   else counter.textContent=Math.floor(sec/3600)+'時間'+String(Math.floor(sec%3600/60)).padStart(2,'0')+'分'+String(sec%60).padStart(2,'0')+'秒';
 }
+
+const HEIWAJIMA_YOUTUBE_CHANNEL='UCjwK26-PM7YXeDvgcu257zQ';
+let liveCurrentlyPlaying=null;
+let liveSourceMode='none';
 function liveUrl(venue){return 'https://race.boatcast.jp/?jo='+String(venue).padStart(2,'0');}
+function hideLivePlaceholder(){
+  $('livePlaceholder').classList.add('hidden');
+}
+function showLivePlaceholder(title,description){
+  $('liveFrame').src='about:blank';
+  $('livePlaceholderTitle').textContent=title;
+  $('livePlaceholderText').textContent=description;
+  $('livePlaceholder').classList.remove('hidden');
+  liveCurrentlyPlaying=null;liveSourceMode='none';
+}
+function startVideo(url,mode){
+  if(!/^https:\/\/(www\.youtube(-nocookie)?\.com|race\.boatcast\.jp)\//.test(url))
+    throw Error('許可されていない動画URLです。');
+  if(liveCurrentlyPlaying!==url){
+    $('liveFrame').src=url;
+    liveCurrentlyPlaying=url;
+  }
+  liveSourceMode=mode;
+  hideLivePlaceholder();
+  $('liveHint').textContent=mode==='youtube'?
+    'YouTubeの埋め込みプレーヤー。配信中でない場合は「動画を再生できません」になります。':
+    'BOATCAST公式ページの埋め込みを試しています。映らない場合は「公式BOATCASTで視聴」で別タブから視聴してください。';
+}
 function syncLive(){
   const venue=Number($('stadium').value);
   if(!Number.isInteger(venue)||venue<1||venue>24)return;
-  const url=liveUrl(venue);
+  const url=liveUrl(venue),channel=venue===4?'https://www.youtube.com/@pstarheiwajima/live':null;
   $('liveVenue').textContent=labels[venue]+'（'+String(venue).padStart(2,'0')+'）';
   $('liveNewTab').href=url;
-  if($('liveFrame').getAttribute('src')!==url)$('liveFrame').src=url;
+  if(channel){
+    $('liveYouTubeChannel').href=channel;
+    $('liveYouTubeChannel').textContent='平和島の公式YouTubeライブで視聴 ↗';
+    $('liveYouTubeChannel').classList.remove('hidden');
+    $('liveYoutubeUrl').value='';
+    // Documented official channel ID; YouTube determines which live stream if one is active.
+    startVideo('https://www.youtube.com/embed/live_stream?channel='+HEIWAJIMA_YOUTUBE_CHANNEL+'&playsinline=1','youtube');
+  }else{
+    $('liveYouTubeChannel').classList.add('hidden');
+    $('liveYoutubeUrl').value='';
+    showLivePlaceholder(labels[venue]+'の公式ライブ', 'BOATCASTの映像は配信元がページ内埋め込みを許可していない場合があります。「公式BOATCASTで視聴」で確実な視聴方法をお試しください。YouTube動画URLがある場合は下の欄で再生できます。');
+  }
+}
+function parseYoutubeVideoId(raw){
+  let u;
+  try{u=new URL(String(raw||'').trim());}catch{return null;}
+  if(u.protocol!=='https:')return null;
+  const host=u.hostname.toLowerCase();
+  let id=null;
+  if(host==='youtu.be'||host==='www.youtu.be')id=u.pathname.split('/')[1]||null;
+  else if(['youtube.com','www.youtube.com','m.youtube.com'].includes(host)){
+    if(u.pathname==='/watch')id=u.searchParams.get('v');
+    else if(/^\/(live|embed|shorts)\//.test(u.pathname))id=u.pathname.split('/')[2]||null;
+  }
+  return id&&/^[a-zA-Z0-9_-]{11}$/.test(id)?id:null;
 }
 $('reloadLive').addEventListener('click',()=>{
-  const src=liveUrl(Number($('stadium').value));
+  if(!liveCurrentlyPlaying){syncLive();return;}
+  const src=liveCurrentlyPlaying;
   $('liveFrame').src='about:blank';
-  $('liveFrame').src=src;
+  liveCurrentlyPlaying=null;
+  startVideo(src,liveSourceMode);
 });
+$('tryBoatcast').addEventListener('click',()=>{
+  startVideo(liveUrl(Number($('stadium').value)),'boatcast');
+});
+$('playYoutube').addEventListener('click',()=>{
+  const id=parseYoutubeVideoId($('liveYoutubeUrl').value);
+  if(!id){
+    $('liveHint').textContent='有効なYouTubeの動画URLを入力してください（例：https://www.youtube.com/watch?v=11文字のID）。チャンネルURLはそのまま埋め込めません。';
+    return;
+  }
+  startVideo('https://www.youtube.com/embed/'+id+'?playsinline=1','youtube');
+});
+$('wideLive').addEventListener('click',()=>{
+  const on=$('livePanel').classList.toggle('live-wide');
+  $('wideLive').textContent=on?'標準の幅に戻す':'横幅いっぱい';
+});
+function setLiveTheater(on){
+  if(on)$('livePanel').classList.remove('live-floating');
+  $('livePanel').classList.toggle('live-theater',on);
+  document.body.classList.toggle('boat-theater-open',on);
+  $('fullLive').textContent=on?'全画面を閉じる':'全画面';
+  $('floatLive').textContent='小窓モード';
+  $('floatLive').setAttribute('aria-pressed','false');
+}
+$('fullLive').addEventListener('click',()=>setLiveTheater(!$('livePanel').classList.contains('live-theater')));
+document.addEventListener('keydown',event=>{if(event.key==='Escape'&&$('livePanel').classList.contains('live-theater'))setLiveTheater(false);});
 
 function showRaceCard(item,date,source){
   const {race,venue,raceNo}=item;
@@ -887,6 +965,7 @@ $('checkSaved').addEventListener('click',()=>checkSavedPredictions(false).catch(
   $('savedStatus').textContent='照合できませんでした：'+(err?.message||'通信または端末保存エラー');
 }));
 $('floatLive').addEventListener('click',()=>{
+  if($('livePanel').classList.contains('live-theater'))setLiveTheater(false);
   const on=$('livePanel').classList.toggle('live-floating');
   $('floatLive').textContent=on?'小窓を閉じる':'小窓モード';
   $('floatLive').setAttribute('aria-pressed',on?'true':'false');

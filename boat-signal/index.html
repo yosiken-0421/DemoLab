@@ -949,8 +949,11 @@ $('exportSaved').addEventListener('click',()=>{
     '照合結果','実際の3連単','3連単払戻100円','本命的中','穴的中','返還を含む','照合日時UTC','購入なし'];
   const rows=records.map(r=>[r.date,r.venue,r.raceNo,r.savedAt,r.deadline,
     r.main.join(' / '),r.hole.join(' / '),r.status==='confirmed'?'確定照合':'照合待ち',
-    r.result?.combo||'',r.result?.payout??'',r.result?.mainHit?'はい':'いいえ',
-    r.result?.holeHit?'はい':'いいえ',r.result?.refunded?'はい':'いいえ',r.checkedAt||'','実際の購入なし']);
+    r.result?.combo||'',r.result?.payout??'',
+    r.status==='confirmed'?(r.result?.mainHit?'はい':'いいえ'):'未判定',
+    r.status==='confirmed'?(r.result?.holeHit?'はい':'いいえ'):'未判定',
+    r.status==='confirmed'?(r.result?.refunded?'はい':'いいえ'):'未判定',
+    r.checkedAt||'','実際の購入なし']);
   const q=x=>'"'+String(x??'').replace(/"/g,'""')+'"';
   const csv='\uFEFF'+[header,...rows].map(xs=>xs.map(q).join(',')).join('\r\n');
   const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));

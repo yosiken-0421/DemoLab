@@ -650,4 +650,90 @@ const style=document.createElement('style');style.id='mofu-table-motion-styles';
 `;
 document.head.appendChild(style);
 })();
+
+/* v1.2: stable solitaire selection, deselection and stationary match handling */
+(()=>{
+'use strict';
+if(typeof S==='undefined'||typeof render!=='function'||typeof tap!=='function')return;
+const solos=new Set(['klondike','spider','freecell','pyramid','tripeaks']);
+const canInspect=()=>typeof root?.querySelector==='function';
+const findAreas=()=>typeof root?.querySelectorAll==='function' ? Array.from(root.querySelectorAll('.columns-scroll,.hand-scroll,.sevens-scroll,.mofu-own-hand')) : [];
+let renderNumber=0;
+const beforeRender=render;
+render=function(){
+ const keep=S.screen==='game';
+ const sx=keep&&typeof window.scrollX==='number'?window.scrollX:0;
+ const sy=keep&&typeof window.scrollY==='number'?window.scrollY:0;
+ const positions=keep?findAreas().map(el=>({left:el.scrollLeft,top:el.scrollTop})):[];
+ const id=++renderNumber;
+ const result=beforeRender();
+ if(keep&&S.screen==='game'){
+   const apply=()=>{
+     if(id!==renderNumber||S.screen!=='game')return;
+     findAreas().forEach((el,i)=>{if(positions[i]){el.scrollLeft=positions[i].left;el.scrollTop=positions[i].top}});
+     if(typeof window.scrollTo==='function'&&typeof window.scrollY==='number'&&(Math.abs(window.scrollY-sy)>1||Math.abs(window.scrollX-sx)>1)){
+       window.scrollTo({left:sx,top:sy,behavior:'instant'});
+     }
+   };
+   apply();
+   if(typeof requestAnimationFrame==='function')requestAnimationFrame(apply);
+ }
+ return result;
+};
+const oldGame=game;
+game=function(){
+ oldGame();
+ if(!solos.has(S.kind)||!canInspect())return;
+ const tools=root.querySelector('.game-tools');
+ if(tools){
+   const disabled=!S.selected;
+   tools.insertAdjacentHTML('beforeend',`<button class="button tiny outline" data-act="clear-selection" ${disabled?'disabled':''} aria-label="選択したカードを解除する">✕ 選択解除</button>`);
+ }
+ const selected=S.selected;
+ if(selected?.kind==='waste')root.querySelector('[data-act="waste"]')?.classList.add('solo-selected-source');
+ if(selected?.kind==='cell')root.querySelector(`[data-act="cell"][data-index="${selected.i}"]`)?.classList.add('solo-selected-source');
+};
+const oldTap=tap;
+tap=function(act,el){
+ if(act==='clear-selection'){
+   if(S.selected){S.selected=null;render()}
+   return;
+ }
+ if(S.screen==='game'&&solos.has(S.kind)&&S.selected){
+   const selected=S.selected;
+   let same=false;
+   if(act==='waste'&&selected.kind==='waste')same=true;
+   if(act==='cell'&&selected.kind==='cell'&&selected.i===Number(el.dataset.index))same=true;
+   if(act==='column-card'&&selected.kind==='col'&&selected.i===Number(el.dataset.index)&&selected.index===Number(el.dataset.pos))same=true;
+   if(act==='column-empty'&&selected.kind==='col'&&selected.i===Number(el.dataset.index))same=true;
+   if(same){S.selected=null;render();return}
+ }
+ return oldTap(act,el);
+};
+// Matching cards in memory already flip on the table; do not fly extra cards across the screen.
+// Keep the character/hand-to-table animation for Old Maid and other hand games.
+if(typeof moveGame==='function'&&typeof engineMoveGame==='function'){
+ const previousMove=moveGame;
+ moveGame=function(g,p,action){
+   if(g?.kind==='memory'&&action?.t==='flip')return engineMoveGame(g,p,action);
+   return previousMove(g,p,action);
+ };
+}
+if(typeof document!=='undefined'&&typeof document.createElement==='function'&&document.head){
+ const style=document.createElement('style');
+ style.id='mofu-stable-solo-layout-v12';
+ style.textContent=`
+ .game-tools{flex-wrap:wrap}
+ .solo-selected-source{outline:3px solid #ffe48d;outline-offset:2px;box-shadow:0 0 0 5px #ffdf8a55}
+ .columns-scroll,.sevens-scroll,.hand-scroll{overscroll-behavior-x:contain}
+ .tableau-column,.pyramid-position,.peak-position,.memory-pos{overflow-anchor:none}
+ .memory-board{grid-auto-rows:minmax(70px,70px)}
+ .memory-pos{height:70px;min-height:70px}
+ .memory-pos>.playing-card,.memory-won{height:68px;min-height:68px}
+ .memory-won{align-self:center}
+ @media(max-width:550px){.memory-board{grid-auto-rows:minmax(70px,70px)}}
+ `;
+ document.head.appendChild(style);
+}
+})();
 </script></body></html>

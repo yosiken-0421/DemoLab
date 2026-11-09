@@ -51,6 +51,20 @@
 .scan-secondary{display:flex;align-items:center;gap:9px;margin:4px 0 2px;flex:0 0 auto}.scan-secondary button{flex:0 0 auto;font-size:11px;min-height:34px;padding:5px 8px}.scan-secondary span{font-size:10px;color:#57747e;line-height:1.35}
 .ocr-preview-holder{background:#e6eced;margin:8px auto;display:grid;place-items:center;max-height:260px;overflow:auto;border-radius:8px}.ocr-preview-holder canvas{max-width:100%;max-height:260px;object-fit:contain}
 @media(max-width:600px){.scan-secondary{gap:6px}.camera-dialog .scan-controls .button{font-size:12px;min-height:48px}}
+
+/* OCR v4: position recognized lines over the captured camera frame */
+.camera-stage{position:relative;background:#091921}
+.camera-stage .ocr-freeze{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:none;z-index:2;pointer-events:none}
+.camera-stage .ocr-overlay{position:absolute;inset:0;z-index:5;pointer-events:none;overflow:hidden}
+.camera-stage .ocr-box{position:absolute;display:flex;align-items:center;min-height:18px;max-width:96%;padding:1px 4px;border:1px solid rgba(2,230,167,.95);border-radius:4px;background:rgba(9,56,48,.88);color:#e7fff7;font-size:clamp(10px,2.5vw,13px);font-weight:750;line-height:1.18;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;box-shadow:0 1px 6px #0008}
+.camera-stage .ocr-overlay-label{position:absolute;left:8px;bottom:9px;z-index:6;border-radius:12px;padding:6px 10px;background:#071f1ae8;color:#92f7db;font-size:12px;font-weight:800;box-shadow:0 2px 9px #0008}
+.camera-stage.has-ocr .ocr-freeze{display:block}
+.camera-stage.has-ocr .scan-frame{display:none}
+.camera-dialog .scan-enhance-toggle{font-size:11px;min-height:34px;padding:6px 10px;flex:0 0 auto}
+.camera-dialog .scan-secondary{flex-wrap:wrap}
+.camera-dialog .scan-secondary span{flex:1;min-width:165px}
+@media(max-width:600px){.camera-stage .ocr-box{font-size:11px;padding:1px 3px}.camera-dialog .scan-secondary{gap:5px}}
+
 </style>
 </head>
 <body>
@@ -100,11 +114,11 @@
 
   <dialog id="cameraDialog" class="dialog camera-dialog"><div class="dialog-body camera-body">
     <div class="dialog-header"><div><span class="section-kicker">HIGH QUALITY CAMERA OCR</span><h2>カメラで読み取る</h2></div><button type="button" class="close-button" data-close="cameraDialog" aria-label="閉じる">×</button></div>
-    <div class="camera-stage fit-whole" id="cameraStage"><video id="cameraVideo" autoplay muted playsinline></video><div class="scan-frame"><span>領収書をこの枠に収めてください</span></div><button type="button" id="cameraFit" class="camera-fit-button" aria-pressed="true">拡大表示</button></div>
+    <div class="camera-stage fit-whole" id="cameraStage"><video id="cameraVideo" autoplay muted playsinline></video><canvas id="ocrFreeze" class="ocr-freeze" width="1" height="1" aria-hidden="true"></canvas><div class="scan-frame"><span>領収書をこの枠に収めてください</span></div><div id="ocrOverlay" class="ocr-overlay" aria-live="polite"></div><button type="button" id="cameraFit" class="camera-fit-button" aria-pressed="true">拡大表示</button></div>
     <p id="scanStatus" class="scan-status" role="status">カメラの起動を待っています。</p>
     <div class="scan-controls"><button class="button button-primary" type="button" id="scanNow">▣ 映像から読み取る</button><button class="button button-outline" type="button" id="highResCapture">◎ 高画質カメラ</button></div>
     <input id="highResFile" type="file" accept="image/*" capture="environment" hidden>
-    <div class="scan-secondary"><button class="button button-outline" type="button" id="toggleAuto">自動スキャン：OFF</button><span>文字が読めない場合は「高画質カメラ」を使用してください（画像は保存しません）</span></div>
+    <div class="scan-secondary"><button class="button button-outline" type="button" id="toggleAuto">自動スキャン：OFF</button><button class="button button-outline scan-enhance-toggle" type="button" id="smallTextToggle" aria-pressed="true">小さい文字：強化ON</button><span>認識後の文字をカメラ上に表示します。小さい文字の強化は処理に時間がかかります。</span></div>
     <button class="button button-outline" id="scanUsePartial" type="button" hidden style="width:100%;margin-top:6px;flex:0 0 auto">読取候補を確認・手動修正</button>
     <details class="camera-help"><summary>読み取りのヒント・認識結果</summary>
       <p class="muted fine">領収書を平らな明るい場所に置き、影と反射を避けて、文字がはっきり見える距離で静止してください。最初は「全体表示」で領収書全体を映します。本アプリは画像を経費記録として保存しません（高画質カメラ起動後のOS側の挙動は端末によります）。初回は日本語認識データの取得に通信が必要です。読み取り結果の数字は必ず確認してください。</p>
@@ -186,7 +200,7 @@ const CATEGORIES=['消耗品費','旅費交通費','車両費','通信費','会�
 const $=id=>document.getElementById(id);
 const yen=n=>'¥'+Number(n||0).toLocaleString('ja-JP');
 const now=new Date(),todayLocal=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`};
-let items=readStored(),selectedYear=now.getFullYear(),selectedMonth=now.getMonth()+1,editId=null,stream=null,worker=null,isScanning=false,autoScanTimer=null,autoScan=false,fitFullFrame=true,lastScanCandidate=null,toastTimer=null;
+let items=readStored(),selectedYear=now.getFullYear(),selectedMonth=now.getMonth()+1,editId=null,stream=null,worker=null,isScanning=false,autoScanTimer=null,autoScan=false,fitFullFrame=true,lastScanCandidate=null,toastTimer=null,smallTextMode=true,lastOCRFrameSize=null,lastOCRBoxes=[];
 function readStored(){try{const saved=JSON.parse(localStorage.getItem(KEY)||'[]');return Array.isArray(saved)?saved.filter(validateRecord):[]}catch{return []}}
 function validateRecord(r){return !!(r&&typeof r.id==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(r.date)&&typeof r.store==='string'&&Number.isSafeInteger(r.amount)&&r.amount>=0&&typeof r.category==='string')}
 function persist(){try{localStorage.setItem(KEY,JSON.stringify(items));return true}catch(e){alert('保存できませんでした。ブラウザの空き容量やプライベートブラウズを確認してください。');return false}}
@@ -229,7 +243,7 @@ async function importBackup(file){if(!file)return;try{if(file.size>5e6)throw new
 function demo(){const y=selectedYear,m=String(selectedMonth).padStart(2,'0');const sample=[{date:`${y}-${m}-03`,store:'【サンプル】文房具店',amount:1280,category:'消耗品費',taxRate:'10',taxAmount:'',note:'テスト用'}, {date:`${y}-${m}-08`,store:'【サンプル】ガソリンスタンド',amount:5000,category:'車両費',taxRate:'10',taxAmount:'',note:'テスト用'}, {date:`${y}-${m}-15`,store:'【サンプル】駐車場',amount:800,category:'旅費交通費',taxRate:'10',taxAmount:'',note:'テスト用'}].map((r,i)=>({...r,id:idNew(),order:items.length+i+1,editedAt:new Date().toISOString()}));items.push(...sample);if(persist()){render();$('settingsDialog').close();notify('操作確認用のサンプルを3件追加しました')}}
 async function startCamera(){
  if(!navigator.mediaDevices?.getUserMedia){notify('カメラはHTTPSのWebページなどで利用できます');return}
- lastScanCandidate=null;$('scanUsePartial').hidden=true;
+ lastScanCandidate=null;$('scanUsePartial').hidden=true;clearOCRDisplay();
  try{
   stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:'environment'},width:{ideal:2560},height:{ideal:1920},frameRate:{ideal:30}}});
   const video=$('cameraVideo');video.srcObject=stream;await video.play();
@@ -316,6 +330,80 @@ function useScanCandidate(){if(!lastScanCandidate)return;
 // Image input never becomes an app record and is not uploaded to a server.
 function clearCapturedImage(){const c=$('ocrPreview');c.width=1;c.height=1;}
 function drawCapturedPreview(canvas){const c=$('ocrPreview'),scale=Math.min(1,550/Math.max(canvas.width,canvas.height));c.width=Math.max(1,Math.round(canvas.width*scale));c.height=Math.max(1,Math.round(canvas.height*scale));c.getContext('2d').drawImage(canvas,0,0,c.width,c.height);}
+
+function clearOCRDisplay(){
+ const stage=$('cameraStage');stage.classList.remove('has-ocr');$('ocrOverlay').replaceChildren();
+ const freeze=$('ocrFreeze');freeze.width=1;freeze.height=1;lastOCRFrameSize=null;lastOCRBoxes=[];
+}
+function freezeOCRFrame(source){
+ const canvas=$('ocrFreeze'),ratio=Math.min(1,1200/Math.max(source.width,source.height));
+ canvas.width=Math.max(1,Math.round(source.width*ratio));canvas.height=Math.max(1,Math.round(source.height*ratio));
+ canvas.getContext('2d',{alpha:false}).drawImage(source,0,0,canvas.width,canvas.height);
+ lastOCRFrameSize={width:source.width,height:source.height};
+ $('cameraStage').classList.add('has-ocr');
+}
+function locateTextLines(data,region){
+ let entries=[];
+ if(Array.isArray(data.lines)&&data.lines.length)entries=data.lines;
+ else if(Array.isArray(data.words)&&data.words.length)entries=data.words;
+ else if(Array.isArray(data.blocks))for(const b of data.blocks)for(const p of b.paragraphs||[])for(const l of p.lines||[])entries.push(l);
+ if(!entries.length&&typeof data.tsv==='string'){
+  const rows=data.tsv.trim().split(/\r?\n/).slice(1),groups=new Map();
+  for(const row of rows){
+   const p=row.split('\t');if(p.length<12||p[0]!=='5'||!p.slice(11).join('\t').trim())continue;
+   const key=p.slice(1,5).join(':'),left=Number(p[6]),top=Number(p[7]),width=Number(p[8]),height=Number(p[9]);
+   if(![left,top,width,height].every(Number.isFinite)||width<=0||height<=0)continue;
+   const old=groups.get(key)||{text:'',bbox:{x0:left,y0:top,x1:left+width,y1:top+height},confidence:0};
+   old.text+=(old.text?' ':'')+p.slice(11).join('\t');old.bbox.x0=Math.min(old.bbox.x0,left);old.bbox.y0=Math.min(old.bbox.y0,top);
+   old.bbox.x1=Math.max(old.bbox.x1,left+width);old.bbox.y1=Math.max(old.bbox.y1,top+height);
+   old.confidence=Math.max(old.confidence,Number(p[10])||0);groups.set(key,old);
+  }
+  entries=[...groups.values()];
+ }
+ const mapped=[];
+ for(const entry of entries){
+  const b=entry.bbox||entry.box,txt=String(entry.text||'').replace(/\s+/g,' ').trim();
+  if(!b||!txt)continue;
+  const x0=Number(b.x0??b.left),y0=Number(b.y0??b.top),x1=Number(b.x1??((b.left||0)+(b.width||0))),y1=Number(b.y1??((b.top||0)+(b.height||0)));
+  if(![x0,y0,x1,y1].every(Number.isFinite)||x1<=x0||y1<=y0)continue;
+  const scaleX=region.width/region.renderWidth,scaleY=region.height/region.renderHeight;
+  mapped.push({text:txt,x:region.x+x0*scaleX,y:region.y+y0*scaleY,w:(x1-x0)*scaleX,h:(y1-y0)*scaleY,confidence:Number(entry.confidence)||0});
+ }
+ return mapped;
+}
+function renderOCRBoxes(boxes){
+ lastOCRBoxes=boxes;const overlay=$('ocrOverlay'),size=lastOCRFrameSize,stage=$('cameraStage');overlay.replaceChildren();
+ if(!size||!boxes.length)return;
+ const stageW=stage.clientWidth,stageH=stage.clientHeight;if(!stageW||!stageH)return;
+ const scale=Math.min(stageW/size.width,stageH/size.height),offX=(stageW-size.width*scale)/2,offY=(stageH-size.height*scale)/2;
+ const seen=new Set(),frag=document.createDocumentFragment();let count=0;
+ for(const box of boxes){
+  const labelText=box.text.trim();if(!labelText||labelText.length>95)continue;
+  const key=[Math.round(box.x/22),Math.round(box.y/13),labelText.slice(0,15)].join(':');
+  if(seen.has(key))continue;seen.add(key);
+  const x=offX+box.x*scale,y=offY+box.y*scale;
+  if(x<0||y<0||x>=stageW||y>=stageH)continue;
+  const label=document.createElement('span');label.className='ocr-box';label.textContent=labelText;label.title=labelText;
+  label.style.left=Math.max(0,Math.round(x))+'px';label.style.top=Math.max(0,Math.round(y))+'px';
+  label.style.maxWidth=Math.max(34,Math.min(stageW-x-3,Math.max(64,box.w*scale+40)))+'px';
+  frag.append(label);if(++count>=65)break;
+ }
+ const indicator=document.createElement('div');indicator.className='ocr-overlay-label';indicator.textContent='文字認識 '+count+'箇所 · 内容を確認';
+ frag.append(indicator);overlay.append(frag);
+}
+function splitReceiptForSmallText(source,index){
+ const w=source.width,h=source.height,y=index===0?0:Math.round(h*.43),cropH=Math.min(h-y,Math.round(h*.57));
+ const max=2950,targetRatio=Math.min(2,max/Math.max(w,cropH)),scale=Math.max(1,targetRatio);
+ const canvas=document.createElement('canvas');canvas.width=Math.max(1,Math.round(w*scale));canvas.height=Math.max(1,Math.round(cropH*scale));
+ canvas.getContext('2d',{alpha:false}).drawImage(source,0,y,w,cropH,0,0,canvas.width,canvas.height);
+ return {canvas,region:{x:0,y,width:w,height:cropH,renderWidth:canvas.width,renderHeight:canvas.height}};
+}
+function toggleSmallTextMode(){
+ smallTextMode=!smallTextMode;
+ $('smallTextToggle').textContent='小さい文字：強化'+(smallTextMode?'ON':'OFF');
+ $('smallTextToggle').setAttribute('aria-pressed',String(smallTextMode));
+}
+
 function imageToCanvas(img,maxDim){const ratio=Math.min(1,maxDim/Math.max(img.videoWidth||img.naturalWidth||img.width,img.videoHeight||img.naturalHeight||img.height));const c=document.createElement('canvas');c.width=Math.max(1,Math.round((img.videoWidth||img.naturalWidth||img.width)*ratio));c.height=Math.max(1,Math.round((img.videoHeight||img.naturalHeight||img.height)*ratio));c.getContext('2d',{alpha:false}).drawImage(img,0,0,c.width,c.height);return c;}
 function sharpnessMetric(canvas){const scale=Math.min(1,420/Math.max(canvas.width,canvas.height));const w=Math.max(20,Math.floor(canvas.width*scale)),h=Math.max(20,Math.floor(canvas.height*scale));const c=document.createElement('canvas');c.width=w;c.height=h;c.getContext('2d').drawImage(canvas,0,0,w,h);const d=c.getContext('2d').getImageData(0,0,w,h).data;let sum=0,count=0;for(let y=1;y<h-1;y+=2){for(let x=1;x<w-1;x+=2){const i=(y*w+x)*4;const a=d[i]*.299+d[i+1]*.587+d[i+2]*.114;const j=i+4,k=i+w*4;const dx=a-(d[j]*.299+d[j+1]*.587+d[j+2]*.114);const dy=a-(d[k]*.299+d[k+1]*.587+d[k+2]*.114);sum+=dx*dx+dy*dy;count++;}}c.width=0;c.height=0;return sum/Math.max(1,count);}
 async function captureVideoBestFrame(video){
@@ -399,7 +487,7 @@ async function highResPhoto(file){
   $('scanStatus').textContent='高画質画像を読み込み中…';
   url=URL.createObjectURL(file);
   const img=new Image();img.decoding='async';img.src=url;await new Promise((resolve,reject)=>{img.onload=resolve;img.onerror=()=>reject(new Error('画像が開けません'))});
-  const c=imageToCanvas(img,3200);URL.revokeObjectURL(url);url=null;img.src='';
+  const c=imageToCanvas(img,3600);URL.revokeObjectURL(url);url=null;img.src='';
   if(!$('cameraDialog').open)$('cameraDialog').showModal();
   await recognizeCanvas(c,{mode:'still'});
  }catch(e){$('scanStatus').textContent=`高画質カメラの画像を開けませんでした：${e.message}`;}
@@ -409,10 +497,10 @@ function toggleAuto(){autoScan=!autoScan;$('toggleAuto').textContent=`自動ス�
 function init(){addOptions($('monthSelect'),Array.from({length:12},(_,i)=>({value:i+1,label:`${i+1}月`})),selectedMonth);addOptions($('categoryFilter'),[{value:'',label:'すべての経費'},...CATEGORIES.map(x=>({value:x,label:x}))],'');addOptions($('entryCategory'),CATEGORIES.map(x=>({value:x,label:x})),'その他');
 $('yearSelect').addEventListener('change',e=>{selectedYear=Number(e.target.value);render()});$('monthSelect').addEventListener('change',e=>{selectedMonth=Number(e.target.value);render()});$('categoryFilter').addEventListener('change',render);$('sortSelect').addEventListener('change',render);
 $('newEntry').addEventListener('click',()=>openForm());$('addFirst').addEventListener('click',()=>openForm());$('entryForm').addEventListener('submit',saveForm);$('exportExcel').addEventListener('click',exportExcel);
-$('cameraLaunch').addEventListener('click',()=>{$('cameraDialog').showModal();startCamera()});$('scanNow').addEventListener('click',scanFrame);$('highResCapture').addEventListener('click',()=>{stopCamera();$('scanStatus').textContent='高画質カメラを起動しています。撮影後に画像を解析します。';$('highResFile').click()});$('highResFile').addEventListener('cancel',()=>{if($('cameraDialog').open)startCamera()});$('highResFile').addEventListener('change',e=>highResPhoto(e.target.files?.[0]));$('cameraFit').addEventListener('click',toggleCameraFit);$('toggleAuto').addEventListener('click',toggleAuto);$('scanUsePartial').addEventListener('click',useScanCandidate);
+$('cameraLaunch').addEventListener('click',()=>{$('cameraDialog').showModal();startCamera()});$('scanNow').addEventListener('click',scanFrame);$('highResCapture').addEventListener('click',()=>{stopCamera();$('scanStatus').textContent='高画質カメラを起動しています。撮影後に画像を解析します。';$('highResFile').click()});$('highResFile').addEventListener('cancel',()=>{if($('cameraDialog').open)startCamera()});$('highResFile').addEventListener('change',e=>highResPhoto(e.target.files?.[0]));$('cameraFit').addEventListener('click',toggleCameraFit);$('smallTextToggle').addEventListener('click',toggleSmallTextMode);$('toggleAuto').addEventListener('click',toggleAuto);$('scanUsePartial').addEventListener('click',useScanCandidate);
 $('openSettings').addEventListener('click',()=>$('settingsDialog').showModal());$('backupJson').addEventListener('click',backup);$('importJson').addEventListener('click',()=>$('jsonFile').click());$('jsonFile').addEventListener('change',e=>importBackup(e.target.files?.[0]));$('loadDemo').addEventListener('click',demo);
 $('clearAll').addEventListener('click',()=>{if(!confirm(`登録した全${items.length}件を完全に削除します。よろしいですか？`))return;const old=items;items=[];if(persist()){render();$('settingsDialog').close();notify('全件削除しました')}else items=old});
-document.querySelectorAll('[data-close]').forEach(el=>el.addEventListener('click',()=>closeDialog(el.dataset.close)));$('cameraDialog').addEventListener('close',()=>{stopCamera();clearCapturedImage()});
+document.querySelectorAll('[data-close]').forEach(el=>el.addEventListener('click',()=>closeDialog(el.dataset.close)));$('cameraDialog').addEventListener('close',()=>{stopCamera();clearCapturedImage();clearOCRDisplay()});
 render()}
 init();
 })();

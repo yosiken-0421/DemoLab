@@ -54,16 +54,26 @@
 
 /* OCR v4: position recognized lines over the captured camera frame */
 .camera-stage{position:relative;background:#091921}
-.camera-stage .ocr-freeze{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:none;z-index:2;pointer-events:none}
-.camera-stage .ocr-overlay{position:absolute;inset:0;z-index:5;pointer-events:none;overflow:hidden}
-.camera-stage .ocr-box{position:absolute;display:flex;align-items:center;min-height:18px;max-width:96%;padding:1px 4px;border:1px solid rgba(2,230,167,.95);border-radius:4px;background:rgba(9,56,48,.88);color:#e7fff7;font-size:clamp(10px,2.5vw,13px);font-weight:750;line-height:1.18;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;box-shadow:0 1px 6px #0008}
 .camera-stage .ocr-overlay-label{position:absolute;left:8px;bottom:9px;z-index:6;border-radius:12px;padding:6px 10px;background:#071f1ae8;color:#92f7db;font-size:12px;font-weight:800;box-shadow:0 2px 9px #0008}
-.camera-stage.has-ocr .ocr-freeze{display:block}
 .camera-stage.has-ocr .scan-frame{display:none}
 .camera-dialog .scan-enhance-toggle{font-size:11px;min-height:34px;padding:6px 10px;flex:0 0 auto}
 .camera-dialog .scan-secondary{flex-wrap:wrap}
 .camera-dialog .scan-secondary span{flex:1;min-width:165px}
-@media(max-width:600px){.camera-stage .ocr-box{font-size:11px;padding:1px 3px}.camera-dialog .scan-secondary{gap:5px}}
+@media(max-width:600px){.camera-dialog .scan-secondary{gap:5px}}
+
+/* OCR v5: frozen frame + overlay share one box placed with object-fit:contain math (see layoutOCRFrame). */
+.camera-stage .ocr-frame{position:absolute;display:none;z-index:2;--k:1}
+.camera-stage.has-ocr .ocr-frame{display:block}
+.camera-stage .ocr-frame .ocr-freeze{position:absolute;inset:0;width:100%;height:100%;display:block}
+.camera-stage .ocr-frame .ocr-overlay{position:absolute;inset:0;overflow:hidden;pointer-events:none}
+.camera-stage .ocr-box{position:absolute;box-sizing:border-box;display:flex;align-items:center;justify-content:flex-start;min-height:0;max-width:none;padding:0 1px;border:1px solid rgba(2,230,167,.95);border-radius:2px;background:rgba(6,44,38,.84);color:#effff9;font-size:max(7px,calc(var(--bh) * var(--k) * .82px));font-weight:700;line-height:1;white-space:nowrap;overflow:hidden;text-overflow:clip;box-shadow:none;transform-origin:center;pointer-events:auto;cursor:pointer}
+.camera-stage .ocr-box>span{display:inline-block;transform-origin:left center}
+.camera-stage .ocr-box.low{border-color:#ffc35a;background:rgba(66,42,6,.84)}
+.camera-stage.ocr-text-hidden .ocr-box{background:transparent;color:transparent}
+.camera-stage .ocr-text-toggle{position:absolute;z-index:6;top:12px;left:12px;background:#071827dc;color:#fff;border:1px solid #ffffff88;border-radius:24px;padding:8px 12px;font-size:12px;font-weight:800;min-height:38px}
+.ocr-chips{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:8px}.ocr-chips>span{font-weight:800}
+.ocr-chip{border:1px solid #9fd8c4;background:#fff;color:#155c45;border-radius:16px;padding:6px 10px;font-size:12px;font-weight:800;min-height:34px}
+.recognition-details pre,#ocrDebug{white-space:pre-wrap}
 
 </style>
 </head>
@@ -114,7 +124,7 @@
 
   <dialog id="cameraDialog" class="dialog camera-dialog"><div class="dialog-body camera-body">
     <div class="dialog-header"><div><span class="section-kicker">HIGH QUALITY CAMERA OCR</span><h2>カメラで読み取る</h2></div><button type="button" class="close-button" data-close="cameraDialog" aria-label="閉じる">×</button></div>
-    <div class="camera-stage fit-whole" id="cameraStage"><video id="cameraVideo" autoplay muted playsinline></video><canvas id="ocrFreeze" class="ocr-freeze" width="1" height="1" aria-hidden="true"></canvas><div class="scan-frame"><span>領収書をこの枠に収めてください</span></div><div id="ocrOverlay" class="ocr-overlay" aria-live="polite"></div><button type="button" id="cameraFit" class="camera-fit-button" aria-pressed="true">拡大表示</button></div>
+    <div class="camera-stage fit-whole" id="cameraStage"><video id="cameraVideo" autoplay muted playsinline></video><div class="scan-frame"><span>領収書をこの枠に収めてください</span></div><div id="ocrFrame" class="ocr-frame"><canvas id="ocrFreeze" class="ocr-freeze" width="1" height="1" aria-hidden="true"></canvas><div id="ocrOverlay" class="ocr-overlay"></div></div><div id="ocrBadge" class="ocr-overlay-label" role="status" hidden></div><button type="button" id="ocrTextToggle" class="ocr-text-toggle" aria-pressed="false" hidden>文字を隠す</button><button type="button" id="cameraFit" class="camera-fit-button" aria-pressed="true">拡大表示</button></div>
     <p id="scanStatus" class="scan-status" role="status">カメラの起動を待っています。</p>
     <div class="scan-controls"><button class="button button-primary" type="button" id="scanNow">▣ 映像から読み取る</button><button class="button button-outline" type="button" id="highResCapture">◎ 高画質カメラ</button></div>
     <input id="highResFile" type="file" accept="image/*" capture="environment" hidden>
@@ -152,7 +162,7 @@ rows.push(row(2,[cs('A2','アプリの登録内容から出力｜このファイ
 rows.push(row(3,[cs('D3','月間合計',4),cf('E3',`SUM(E6:E${Math.max(6,end)})`,items.reduce((s,x)=>s+x.amount,0),3),cs('G3','件数',4),cn('H3',items.length,6)],24));
 const headers=['順番','日付','店名・支払先','経費分類','金額（税込）','税率','税額','メモ','データID'];
 rows.push(row(5,headers.map((h,i)=>cs(col(i+1)+'5',h,1)),27));
-items.forEach((r,i)=>{const n=i+6;rows.push(row(n,[cn('A'+n,i+1,6),cs('B'+n,r.date,5),cs('C'+n,r.store),cs('D'+n,r.category),cn('E'+n,r.amount,3),cs('F'+n,r.taxRate===''?'':r.taxRate==='mixed'?'混在':`${r.taxRate}%`),r.taxAmount===''?cs('G'+n,''):cn('G'+n,r.taxAmount,3),cs('H'+n,r.note||''),cs('I'+n,r.id)].filter(Boolean),22))});
+items.forEach((r,i)=>{const n=i+6;rows.push(row(n,[cn('A'+n,i+1,6),cs('B'+n,r.date,5),cs('C'+n,r.store),cs('D'+n,r.category),cn('E'+n,r.amount,3),cs('F'+n,r.taxRate===''||r.taxRate==null?'':r.taxRate==='mixed'?'混在':`${r.taxRate}%`),r.taxAmount===''||r.taxAmount==null?cs('G'+n,''):cn('G'+n,r.taxAmount,3),cs('H'+n,r.note||''),cs('I'+n,r.id)].filter(Boolean),22))});
 return sheetXml(rows,[9,16,31,20,19,12,18,36,42],`A5:I${Math.max(6,end)}`,true)}
 function annualXml(year,records,categories){const rows=[];rows.push(row(1,[cs('A1',`${year}年 年間経費サマリー`,2)],35));rows.push(row(2,[cs('A2','月別・経費分類別の集計｜各月シートの合計から連動します',4)]));
 rows.push(row(3,[cs('A3','年間合計',4),cf('B3','SUM(B6:B17)',records.reduce((a,r)=>a+r.amount,0),3),cs('C3','登録件数',4),cf('D3','SUM(C6:C17)',records.length,6)],27));
@@ -193,6 +203,249 @@ global.ReceiptExcel={buildExcel};
 
 </script>
 <script>
+/* ReceiptOCR v5: text normalization, field extraction with cross-checks, and geometry for OCR overlays.
+   Pure functions (no DOM state) so they can be unit-tested. Nothing here invents values: every field is
+   chosen from numbers/text that OCR actually read, and doubtful totals are left blank with candidates. */
+(function(global){
+'use strict';
+const CJK='\\u3040-\\u30ff\\u3400-\\u9fff\\uf900-\\ufaff々〆ヶー';
+const CJK_SPACE=new RegExp('(['+CJK+'])[ \\t]+(?=['+CJK+'])','g');
+function normalizeLine(s){
+ let t=String(s??'').normalize('NFKC').replace(/[\t　]/g,' ');
+ t=t.replace(CJK_SPACE,'$1');                       // Tesseract jpn often emits "合 計" / "お 預 り"
+ t=t.replace(/\\(?=\s*[\dOoIl|])/g,'¥');             // "¥" read as backslash
+ t=t.replace(/(^|[\s(（])[%#](?=\s?\d)/g,'$1¥');           // "¥" read as "%" or "#" in front of a price
+ t=t.replace(/¥\s+(?=[\dOoIl|])/g,'¥');
+ t=t.replace(/(\d)\s*[,，]\s*(?=\d{3}(?!\d))/g,'$1,'); // "1, 053" -> "1,053"
+ t=t.replace(/¥[\dOoIl|,]+/g,m=>'¥'+m.slice(1).replace(/[Oo]/g,'0').replace(/[Il|]/g,'1'));
+ return t.replace(/\s+/g,' ').trim();
+}
+function splitLines(text){return String(text||'').replace(/\r/g,'').split('\n').map(normalizeLine).filter(Boolean)}
+// Money-like numbers in a normalized line. Percentages, counts, times, dates, phone/model numbers are skipped.
+function moneyValues(line){
+ const out=[],re=/(¥)?(\d{1,3}(?:,\d{3})+|\d+)(?!\d)(円)?/g;let m;
+ while((m=re.exec(line))){
+  const start=m.index,end=start+m[0].length,yen=!!(m[1]||m[3]),before=line.slice(Math.max(0,start-1),start),after=line.slice(end);
+  if(/^\s*(?:%|点|個|枚|本|対|名|件|回|人|号|年|月|日|時|分|秒|[:：\/\-.]\d)/.test(after))continue;
+  if(!yen&&(/[:：\/\-.#A-Za-z]$/.test(before)||/^[A-Za-z]/.test(after)))continue;
+  if(/[,，.]\s?$/.test(line.slice(0,start)))continue; // fragment of a broken number such as "Z, 937"
+  const value=Number(m[2].replace(/,/g,''));
+  if(!Number.isSafeInteger(value)||value<=0||value>=1e8)continue;
+  if(!yen&&!m[2].includes(',')&&m[2].length>7)continue; // long bare digit runs are IDs, not prices
+  out.push({value,yen,index:start});
+ }
+ return out;
+}
+function firstValueAfter(line,re){const m=re.exec(line);if(!m)return null;const pos=m.index+m[0].length;const vals=moneyValues(line).filter(v=>v.index>=pos);if(!vals.length)return null;const y=vals.find(v=>v.yen);return (y||vals[0]).value}
+const RX={
+ total:/(?:税込(?:合計|金額)|総合計|合計金額|お?買上(?:げ)?(?:金額|計|合計)|お?支払(?:い)?(?:金額|合計|額)|ご?請求(?:金額|額)|お会計|領収金額|ご?利用(?:金額|合計)|現計|合計|TOTAL)/i,
+ notTotal:/(?:小計|点数|対象|税抜|消費税|内税|外税|税額|値引|割引|ポイント|預|釣)/,
+ subtotal:/小計/,
+ deposit:/(?:お?預(?:か)?り(?:金|額)?|現金預り|^現金)/,
+ change:/(?:お?釣(?:り|銭)?|おつり)/,
+ t10:/(?:(?<![\d.])10\s?%?\s?(?:対象|課税)|標準税率対象)/,
+ t8:/(?:(?<![\d.])8\s?%?\s?(?:対象|課税)|軽減税率対象)/,
+ tax:/(?:消費税|内税|外税|税額)/,
+ taxTotal:/(?:消費税(?:等)?(?:合計|計)|税額合計|内消費税等?合計)/,
+};
+function validDate(y,m,d,today){
+ const dt=new Date(y,m-1,d);if(dt.getFullYear()!==y||dt.getMonth()+1!==m||dt.getDate()!==d)return null;
+ const t=today||new Date();if(y<2000||dt.getTime()>t.getTime()+2*864e5)return null; // receipts are not dated in the future
+ return `${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+}
+function parseDate(line,today){
+ const s=normalizeLine(line).replace(/\s*([\/.年月日\-])\s*/g,'$1').replace(/(令和|R)\s+/g,'$1');let m;
+ if((m=s.match(/(20\d{2})[\/.年\-](\d{1,2})[\/.月\-](\d{1,2})(?!\d)/)))return validDate(+m[1],+m[2],+m[3],today);
+ if((m=s.match(/(?:令和|R)(元|\d{1,2})[\/.年](\d{1,2})[\/.月](\d{1,2})(?!\d)/)))return validDate(2018+(m[1]==='元'?1:+m[1]),+m[2],+m[3],today);
+ if((m=s.match(/(?<![\d\-])(\d{2})[\/.](\d{1,2})[\/.](\d{1,2})(?![\d\/.])/))){const y=2000+(+m[1]),cy=(today||new Date()).getFullYear();if(y>=cy-2&&y<=cy)return validDate(y,+m[2],+m[3],today)}
+ return null;
+}
+const STORE_SKIP=/(?:TEL|電話|登録番号|〒|領収|レシート|ありがとう|ご利用|いらっしゃいませ|毎度|営業時間|担当|レジ|No[.:]|インボイス|合計|小計|消費税|税率|お買|お預|お釣|対象)/i;
+function storeScore(line){
+ if(line.length<2||line.length>40||STORE_SKIP.test(line)||parseDate(line))return -1;
+ if(moneyValues(line).some(v=>v.yen))return -1;
+ if(/[都道府県市区町村郡].*\d|\d+-\d+/.test(line))return -1;  // address / phone
+ const letters=(line.match(new RegExp('['+CJK+'A-Za-z]','g'))||[]).length;
+ if(letters<2||letters/line.length<.5)return -1;
+ return letters;
+}
+// Parse one OCR pass. `lines` may be plain strings or {text,h} (h = line height, used to prefer the large store name).
+function parsePass(input,{today}={}){
+ const raw=Array.isArray(input)?input:String(input||'').split('\n');
+ const lines=raw.map(l=>typeof l==='string'?{text:normalizeLine(l),h:0}:{text:normalizeLine(l.text),h:Number(l.h)||0}).filter(l=>l.text);
+ const r={dates:[],totals:[],subtotals:[],deposits:[],changes:[],t10:[],t8:[],taxes:[],taxTotals:[],store:'',has10:false,has8:false};
+ lines.forEach(({text},i)=>{
+  const d=parseDate(text,today);if(d)r.dates.push(d);
+  const next=lines[i+1]?.text||'',nextOnlyMoney=/^[¥\d,円\s()]+$/.test(next)?moneyValues(next).map(v=>v.value).pop()??null:null;
+  if(RX.total.test(text)&&!RX.notTotal.test(text)){const v=firstValueAfter(text,RX.total)??nextOnlyMoney;if(v!==null)r.totals.push(v)}
+  if(RX.subtotal.test(text)){const v=firstValueAfter(text,RX.subtotal)??nextOnlyMoney;if(v!==null)r.subtotals.push(v)}
+  if(RX.deposit.test(text)&&!RX.change.test(text)){const v=firstValueAfter(text,RX.deposit)??nextOnlyMoney;if(v!==null)r.deposits.push(v)}
+  if(RX.change.test(text)){const v=firstValueAfter(text,RX.change)??nextOnlyMoney;if(v!==null)r.changes.push(v)}
+  if(RX.t10.test(text)){r.has10=true;const v=firstValueAfter(text,RX.t10);if(v!==null)r.t10.push(v)}
+  if(RX.t8.test(text)){r.has8=true;const v=firstValueAfter(text,RX.t8);if(v!==null)r.t8.push(v)}
+  if(/(?<!\d)10\s*%/.test(text))r.has10=true;
+  if(/(?<![\d.])8\s*%/.test(text)||/軽減税率/.test(text))r.has8=true;
+  if(RX.taxTotal.test(text)){const v=firstValueAfter(text,RX.taxTotal);if(v!==null)r.taxTotals.push(v)}
+  else if(RX.tax.test(text)){const v=firstValueAfter(text,RX.tax);if(v!==null)r.taxes.push(v)}
+ });
+ const head=lines.slice(0,8).map((l,i)=>({...l,i,score:storeScore(l.text)})).filter(l=>l.score>0);
+ if(head.length){const maxH=Math.max(...head.map(l=>l.h));const pick=maxH>0?head.reduce((a,b)=>b.h>a.h*1.15?b:a):head[0];r.store=pick.text}
+ return r;
+}
+function tally(values){const m=new Map();for(const{v,w}of values)if(v!==null&&v!==''&&v!==undefined)m.set(v,(m.get(v)||0)+w);return [...m.entries()].map(([value,support])=>({value,support})).sort((a,b)=>b.support-a.support)}
+// Combine several OCR passes over the SAME photo. Totals are cross-checked with deposit-change, subtotal and tax-rate targets.
+function combinePasses(passes){
+ const P=passes.map(p=>({w:p.weight||1,r:p.parsed}));
+ const any=k=>P.flatMap(p=>p.r[k]);
+ const totals=tally(P.flatMap(p=>[...new Set(p.r.totals)].map(v=>({v,w:p.w})))),deps=new Set(any('deposits')),chg=new Set(any('changes')),subs=new Set(any('subtotals'));
+ const t10=new Set(any('t10')),t8=new Set(any('t8'));
+ const evidence=v=>{const why=[];
+  if([...deps].some(d=>chg.has(d-v)&&d>=v))why.push('お預り−お釣り');
+  if(subs.has(v))why.push('小計');
+  const sums=new Set([...t10,...t8]);for(const a of t10)for(const b of t8)sums.add(a+b);
+  if(sums.has(v))why.push('税率別対象額');
+  return why};
+ const cands=totals.map(c=>{const why=evidence(c.value);return {...c,why,score:c.support+why.length*1.5}}).filter(c=>c.value>=10||c.why.length).sort((a,b)=>b.score-a.score);
+ // Values on which at least two independent read figures agree (subtotal, deposit−change, tax-rate targets).
+ // They are offered for one-tap selection and veto an unverified total, but are never auto-filled themselves.
+ const arith=new Map();const addA=(v,src)=>{if(v>0){const s=arith.get(v)||new Set();s.add(src);arith.set(v,s)}};
+ for(const d of deps)for(const c of chg)if(d>c)addA(d-c,'お預り−お釣り');
+ for(const v of subs)addA(v,'小計');
+ {const sums=new Set([...t10,...t8]);for(const a of t10)for(const b of t8)sums.add(a+b);for(const v of sums)addA(v,'税率別対象額')}
+ const consensus=[...arith.entries()].filter(([,s])=>s.size>=2).map(([value,s])=>({value,why:[...s]}));
+ for(const c of consensus)if(!cands.some(x=>x.value===c.value))cands.push({value:c.value,support:0,why:c.why,score:0,derived:true});
+ let amount=null,amountStatus='missing';
+ const real=cands.filter(c=>!c.derived);
+ if(real.length===1&&!real[0].why.length&&consensus.some(c=>c.value!==real[0].value))amountStatus='conflict';
+ else if(real.length===1){amount=real[0].value;amountStatus=real[0].why.length?'verified':'single'}
+ else if(real.length>1){const[a,b]=real;if(!a.why.length&&consensus.some(c=>c.value!==a.value))amountStatus='conflict';else if((a.why.length&&!b.why.length&&a.score>=b.score)||a.score>=b.score+2){amount=a.value;amountStatus=a.why.length?'verified':'majority'}else amountStatus='conflict'}
+ const dates=tally(P.flatMap(p=>[...new Set(p.r.dates)].slice(0,1).map(v=>({v,w:p.w}))));
+ let date='',dateStatus='missing';
+ if(dates.length===1){date=dates[0].value;dateStatus='ok'}else if(dates.length>1){if(dates[0].support>=dates[1].support+1){date=dates[0].value;dateStatus='majority'}else dateStatus='conflict'}
+ const stores=tally(P.map(p=>({v:p.r.store,w:p.w+(p.storeBonus||0)})));
+ const store=stores[0]?.value||'';
+ const has10=P.some(p=>p.r.has10),has8=P.some(p=>p.r.has8);
+ const rate=has10&&has8?'mixed':has10?'10':has8?'8':'';
+ const taxVotes=tally(P.map(p=>{const tt=p.r.taxTotals[0];const parts=[...new Set(p.r.taxes)];return {v:tt??(parts.length?parts.reduce((a,b)=>a+b,0):null),w:p.w}}));
+ let taxAmount='';if(taxVotes.length===1||(taxVotes.length>1&&taxVotes[0].support>=taxVotes[1].support+1))taxAmount=taxVotes[0].value;
+ if(taxAmount!==''&&amount!==null&&taxAmount>=amount)taxAmount='';
+ return {date,store,amount,rate,taxAmount,status:{date:dateStatus,amount:amountStatus,store:stores.length>1?'conflict':store?'single':'missing'},amountCandidates:cands.slice(0,4),dateCandidates:dates.slice(0,3).map(d=>d.value)};
+}
+// Backward compatible single-text API (used by tests and older callers).
+function extractReceipt(text,opts){const c=combinePasses([{parsed:parsePass(text,opts)}]);return {date:c.date,store:c.store,amount:c.amount,rate:c.rate,taxAmount:c.taxAmount}}
+
+/* ---------- geometry ---------- */
+// A "view" is a canvas made from the source by rotation (angle, radians), crop and scale.
+// Canvas point p maps to source point: C + R(angle)·(p − canvasCenter)/scale.
+function mapPoint(region,px,py){const dx=(px-region.cw/2)/region.scale,dy=(py-region.ch/2)/region.scale,c=Math.cos(region.angle),s=Math.sin(region.angle);return {x:region.cx+dx*c-dy*s,y:region.cy+dx*s+dy*c}}
+function mapBox(region,b){const ctr=mapPoint(region,(b.x0+b.x1)/2,(b.y0+b.y1)/2);return {cx:ctr.x,cy:ctr.y,w:(b.x1-b.x0)/region.scale,h:(b.y1-b.y0)/region.scale,angle:region.angle}}
+// object-fit: contain rectangle of an image (iw×ih) inside a box (bw×bh)
+function containRect(iw,ih,bw,bh){const k=Math.min(bw/iw,bh/ih);return {k,x:(bw-iw*k)/2,y:(bh-ih*k)/2,w:iw*k,h:ih*k}}
+function bboxOf(b){if(!b)return null;const x0=Number(b.x0??b.left),y0=Number(b.y0??b.top),x1=Number(b.x1??(Number(b.left)+Number(b.width))),y1=Number(b.y1??(Number(b.top)+Number(b.height)));return [x0,y0,x1,y1].every(Number.isFinite)&&x1>x0&&y1>y0?{x0,y0,x1,y1}:null}
+// Collect text lines from a Tesseract.js 5 result. Lines are split into segments at wide gaps (item name … price).
+function linesFromData(data){
+ let lines=[];
+ if(Array.isArray(data?.lines)&&data.lines.length)lines=data.lines;
+ else if(Array.isArray(data?.blocks))for(const b of data.blocks)for(const p of b.paragraphs||[])for(const l of p.lines||[])lines.push(l);
+ if(!lines.length&&typeof data?.tsv==='string'){
+  const groups=new Map();
+  for(const row of data.tsv.trim().split(/\r?\n/).slice(1)){const p=row.split('\t');if(p.length<12||p[0]!=='5'||!p.slice(11).join(' ').trim())continue;
+   const key=p.slice(1,5).join(':'),bb={x0:+p[6],y0:+p[7],x1:+p[6]+ +p[8],y1:+p[7]+ +p[9]};if(!bboxOf(bb))continue;
+   const g=groups.get(key)||{words:[],confidence:0};g.words.push({text:p.slice(11).join(' '),bbox:bb,confidence:+p[10]||0});groups.set(key,g)}
+  lines=[...groups.values()].map(g=>({words:g.words,text:g.words.map(w=>w.text).join(' '),confidence:g.words.reduce((a,w)=>a+w.confidence,0)/g.words.length,bbox:{x0:Math.min(...g.words.map(w=>w.bbox.x0)),y0:Math.min(...g.words.map(w=>w.bbox.y0)),x1:Math.max(...g.words.map(w=>w.bbox.x1)),y1:Math.max(...g.words.map(w=>w.bbox.y1))}}));
+ }
+ const out=[];
+ for(const l of lines){
+  const bb=bboxOf(l.bbox),text=String(l.text||'').replace(/\s+/g,' ').trim();if(!bb||!text)continue;
+  const words=(l.words||[]).map(w=>({text:String(w.text||'').trim(),bbox:bboxOf(w.bbox),conf:Number(w.confidence)||0})).filter(w=>w.text&&w.bbox).sort((a,b)=>a.bbox.x0-b.bbox.x0);
+  const lh=bb.y1-bb.y0,segs=[];
+  for(const w of words){const last=segs[segs.length-1];if(last&&w.bbox.x0-last.bbox.x1<lh*1.6){last.words.push(w);last.bbox={x0:Math.min(last.bbox.x0,w.bbox.x0),y0:Math.min(last.bbox.y0,w.bbox.y0),x1:Math.max(last.bbox.x1,w.bbox.x1),y1:Math.max(last.bbox.y1,w.bbox.y1)}}else segs.push({words:[w],bbox:{...w.bbox}})}
+  const segments=segs.length?segs.map(s=>({text:normalizeLine(s.words.map(w=>w.text).join(' ')),bbox:s.bbox,conf:s.words.reduce((a,w)=>a+w.conf,0)/s.words.length})):[{text:normalizeLine(text),bbox:bb,conf:Number(l.confidence)||0}];
+  const bl=l.baseline,slope=bl&&Number.isFinite(bl.x0)&&bl.x1-bl.x0>lh*3?Math.atan2(bl.y1-bl.y0,bl.x1-bl.x0):null;
+  out.push({text,bbox:bb,conf:Number(l.confidence)||0,slope,segments});
+ }
+ return out;
+}
+const median=a=>{if(!a.length)return null;const s=[...a].sort((x,y)=>x-y);return s[Math.floor(s.length/2)]};
+// Decide the detail pass from the first (layout) pass: deskew angle, text region, upscale factor and tiles.
+// Bright paper area on a darker background, from a small luminance grid (Otsu threshold, largest component).
+// Returns a rectangle in grid units, or null when the paper cannot be separated from the background.
+function paperRect(src,gw,gh){
+ // 3×3 brightness dilation first: dense print darkens paper cells, which would otherwise split the receipt.
+ const gray=new Float32Array(src.length);
+ for(let y=0;y<gh;y++)for(let x=0;x<gw;x++){let m=0;for(let oy=-1;oy<=1;oy++)for(let ox=-1;ox<=1;ox++){const yy=y+oy,xx=x+ox;if(yy>=0&&yy<gh&&xx>=0&&xx<gw&&src[yy*gw+xx]>m)m=src[yy*gw+xx]}gray[y*gw+x]=m}
+ const hist=new Array(256).fill(0);for(const v of gray)hist[Math.max(0,Math.min(255,v|0))]++;
+ const n=gray.length;let sum=0;for(let i=0;i<256;i++)sum+=i*hist[i];
+ let sb=0,wb=0,best=0,th=128;for(let i=0;i<256;i++){wb+=hist[i];if(!wb)continue;const wf=n-wb;if(!wf)break;sb+=i*hist[i];const mb=sb/wb,mf=(sum-sb)/wf,between=wb*wf*(mb-mf)*(mb-mf);if(between>best){best=between;th=i}}
+ const seen=new Uint8Array(n);let bestComp=null;
+ for(let s=0;s<n;s++){if(seen[s]||gray[s]<=th)continue;const stack=[s];seen[s]=1;let cnt=0,x0=gw,y0=gh,x1=0,y1=0;
+  while(stack.length){const i=stack.pop(),x=i%gw,y=(i/gw)|0;cnt++;if(x<x0)x0=x;if(x>x1)x1=x;if(y<y0)y0=y;if(y>y1)y1=y;
+   for(const j of [x>0?i-1:-1,x<gw-1?i+1:-1,y>0?i-gw:-1,y<gh-1?i+gw:-1])if(j>=0&&!seen[j]&&gray[j]>th){seen[j]=1;stack.push(j)}}
+  if(!bestComp||cnt>bestComp.cnt)bestComp={cnt,x0,y0,x1,y1}}
+ if(!bestComp||bestComp.cnt<n*.015)return null; // a receipt held far away can cover only ~2% of the frame
+ const r={x0:Math.min(bestComp.x0+1,bestComp.x1),y0:Math.min(bestComp.y0+1,bestComp.y1),x1:Math.max(bestComp.x1,bestComp.x0+1),y1:Math.max(bestComp.y1,bestComp.y0+1)}; // undo the 1-cell dilation
+ if((bestComp.x1-bestComp.x0+1)*(bestComp.y1-bestComp.y0+1)>gw*gh*.92)return null; // paper fills the frame: nothing to crop
+ return r;
+}
+// Skew of text rows from the image itself (projection profile). gray: luminance array (w×h), roi: optional rect.
+// Returns radians, positive = rows run downward to the right. Works when the layout pass finds nothing.
+function estimateSkew(gray,w,h,roi){
+ // Use pixels with a strong vertical brightness change (top/bottom edges of glyph rows). Large dark areas
+ // (table, shadows) contribute only their outline, so they do not dominate the profile.
+ const r=roi||{x0:0,y0:0,x1:w,y1:h},pts=[];
+ for(let y=Math.max(2,r.y0|0);y<Math.min(h-2,r.y1);y++)for(let x=Math.max(0,r.x0|0);x<Math.min(w,r.x1);x++){
+  if(Math.abs(gray[(y+2)*w+x]-gray[(y-2)*w+x])>50)pts.push(x,y);
+ }
+ if(pts.length<200)return 0;
+ const score=a=>{const s=Math.sin(a),c=Math.cos(a),bins=new Map();for(let i=0;i<pts.length;i+=2){const k=Math.round(-pts[i]*s+pts[i+1]*c);bins.set(k,(bins.get(k)||0)+1)}let q=0;for(const v of bins.values())q+=v*v;return q};
+ let best=0,bestS=-1;const deg=Math.PI/180;
+ for(let a=-15;a<=15;a+=1){const s=score(a*deg);if(s>bestS){bestS=s;best=a}}
+ let fine=best;for(let a=best-1;a<=best+1;a+=.25){const s=score(a*deg);if(s>bestS){bestS=s;fine=a}}
+ return Math.abs(fine)<.5?0:fine*deg;
+}
+function planDetail(lines,region,src,cfg,paper){
+ const good=lines.filter(l=>l.conf>=cfg.minLayoutConf&&l.text.replace(/\s/g,'').length>=2);
+ const C0={x:src.width/2,y:src.height/2};
+ const rotQ=(px,py,a)=>{const dx=px-C0.x,dy=py-C0.y,c=Math.cos(-a),s=Math.sin(-a);return {x:dx*c-dy*s,y:dx*s+dy*c}};
+ if(good.length<3){
+  let rect={angle:region.angle,x0:-src.width/2,y0:-src.height/2,x1:src.width/2,y1:src.height/2},kind='whole';
+  if(paper){const q=[[paper.x0,paper.y0],[paper.x1,paper.y0],[paper.x0,paper.y1],[paper.x1,paper.y1]].map(([x,y])=>rotQ(x,y,region.angle)),m=Math.max(paper.x1-paper.x0,paper.y1-paper.y0)*.04;
+   rect={angle:region.angle,x0:Math.min(...q.map(p=>p.x))-m,x1:Math.max(...q.map(p=>p.x))+m,y0:Math.min(...q.map(p=>p.y))-m,y1:Math.max(...q.map(p=>p.y))+m};kind='paper'}
+  const area=(rect.x1-rect.x0)*(rect.y1-rect.y0),s=Math.min(cfg.maxScale,cfg.fallbackScale,Math.sqrt(cfg.tileBudget*cfg.maxTiles/area));
+  return tilePlan(rect,Math.max(1,s),src.width/40,C0,cfg,kind);
+ }
+ const slopes=good.map(l=>l.slope).filter(v=>v!==null);let angle=(median(slopes)||0)+region.angle;
+ if(Math.abs(angle)<cfg.minDeskewRad)angle=0;angle=Math.max(-.35,Math.min(.35,angle));
+ const mapped=good.map(l=>mapBox(region,l.bbox)),lh=median(mapped.map(b=>b.h));
+ const c=Math.cos(-angle),s=Math.sin(-angle);let x0=Infinity,y0=Infinity,x1=-Infinity,y1=-Infinity;
+ // Bound by every line the layout pass LOCATED (even if it could not read it), not only the readable ones.
+ const located=lines.map(l=>mapBox(region,l.bbox)).filter(b=>b.h>=lh*.5&&b.h<=lh*4);
+ for(const b of located){const dx=b.cx-C0.x,dy=b.cy-C0.y,qx=dx*c-dy*s,qy=dx*s+dy*c;x0=Math.min(x0,qx-b.w/2);x1=Math.max(x1,qx+b.w/2);y0=Math.min(y0,qy-b.h/2);y1=Math.max(y1,qy+b.h/2)}
+ // The layout pass can miss rows of tiny print; never crop tighter than the detected paper.
+ if(paper)for(const [px,py] of [[paper.x0,paper.y0],[paper.x1,paper.y0],[paper.x0,paper.y1],[paper.x1,paper.y1]]){const dx=px-C0.x,dy=py-C0.y,qx=dx*c-dy*s,qy=dx*s+dy*c;x0=Math.min(x0,qx);x1=Math.max(x1,qx);y0=Math.min(y0,qy);y1=Math.max(y1,qy)}
+ const mx=Math.max(lh*4,src.width*.06),my=Math.max(lh*4,src.height*.04);
+ const lim=Math.hypot(src.width,src.height)/2;
+ const rect={angle,x0:Math.max(-lim,x0-mx),x1:Math.min(lim,x1+mx),y0:Math.max(-lim,y0-my),y1:Math.min(lim,y1+my)};
+ let scale=Math.max(1,Math.min(cfg.maxScale,cfg.targetLineHeight/Math.max(1,lh)));
+ const area=(rect.x1-rect.x0)*(rect.y1-rect.y0);
+ if(area*scale*scale>cfg.tileBudget*cfg.maxTiles)scale=Math.max(Math.min(1,scale),Math.sqrt(cfg.tileBudget*cfg.maxTiles/area));
+ return tilePlan(rect,scale,lh,C0,cfg,'text',lh);
+}
+function tilePlan(rect,scale,lh,C0,cfg,kind,lineHeight=null){
+ const w=rect.x1-rect.x0,h=rect.y1-rect.y0,n=Math.max(1,Math.min(cfg.maxTiles,Math.ceil(w*h*scale*scale/cfg.tileBudget))),overlap=Math.max(lh*3,24),core=h/n,tiles=[];
+ const c=Math.cos(rect.angle),s=Math.sin(rect.angle);
+ for(let i=0;i<n;i++){
+  const cy0=rect.y0+core*i,cy1=i===n-1?rect.y1:rect.y0+core*(i+1),ty0=Math.max(rect.y0,cy0-(i?overlap:0)),ty1=Math.min(rect.y1,cy1+(i<n-1?overlap:0));
+  const qx=(rect.x0+rect.x1)/2,qy=(ty0+ty1)/2;
+  tiles.push({cx:C0.x+qx*c-qy*s,cy:C0.y+qx*s+qy*c,cropW:w,cropH:ty1-ty0,angle:rect.angle,scale,coreTop:cy0-ty0,coreBottom:cy1-ty0});
+ }
+ return {kind,angle:rect.angle,scale,lineHeight,tiles};
+}
+const DEFAULTS={layoutMax:2400,targetLineHeight:38,maxScale:3,fallbackScale:2,tileBudget:5.5e6,maxTiles:3,minLayoutConf:25,minDeskewRad:.012,detailPsm:4,normalize:true};
+global.ReceiptOCR={normalizeLine,splitLines,moneyValues,parseDate,parsePass,combinePasses,extractReceipt,mapPoint,mapBox,containRect,linesFromData,planDetail,paperRect,estimateSkew,DEFAULTS};
+})(typeof window!=='undefined'?window:globalThis);
+</script>
+<script>
 (function(){
 'use strict';
 const KEY='receipt-note-records-v1';
@@ -200,7 +453,9 @@ const CATEGORIES=['消耗品費','旅費交通費','車両費','通信費','会�
 const $=id=>document.getElementById(id);
 const yen=n=>'¥'+Number(n||0).toLocaleString('ja-JP');
 const now=new Date(),todayLocal=()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`};
-let items=readStored(),selectedYear=now.getFullYear(),selectedMonth=now.getMonth()+1,editId=null,stream=null,worker=null,isScanning=false,autoScanTimer=null,autoScan=false,fitFullFrame=true,lastScanCandidate=null,toastTimer=null,smallTextMode=true,lastOCRFrameSize=null,lastOCRBoxes=[];
+let items=readStored(),selectedYear=now.getFullYear(),selectedMonth=now.getMonth()+1,editId=null,stream=null,worker=null,isScanning=false,autoScanTimer=null,autoScan=false,fitFullFrame=true,lastScanCandidate=null,toastTimer=null,smallTextMode=true,lastOCRFrameSize=null,lastOCRBoxes=[],currentPassLabel='',ocrTextVisible=true,cameraStarting=false;
+const OCR_CONFIG={...window.ReceiptOCR.DEFAULTS};
+window.__receiptNoteOCRConfig=OCR_CONFIG; // exposed only so automated tests can compare settings
 function readStored(){try{const saved=JSON.parse(localStorage.getItem(KEY)||'[]');return Array.isArray(saved)?saved.filter(validateRecord):[]}catch{return []}}
 function validateRecord(r){return !!(r&&typeof r.id==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(r.date)&&typeof r.store==='string'&&Number.isSafeInteger(r.amount)&&r.amount>=0&&typeof r.category==='string')}
 function persist(){try{localStorage.setItem(KEY,JSON.stringify(items));return true}catch(e){alert('保存できませんでした。ブラウザの空き容量やプライベートブラウズを確認してください。');return false}}
@@ -243,14 +498,24 @@ async function importBackup(file){if(!file)return;try{if(file.size>5e6)throw new
 function demo(){const y=selectedYear,m=String(selectedMonth).padStart(2,'0');const sample=[{date:`${y}-${m}-03`,store:'【サンプル】文房具店',amount:1280,category:'消耗品費',taxRate:'10',taxAmount:'',note:'テスト用'}, {date:`${y}-${m}-08`,store:'【サンプル】ガソリンスタンド',amount:5000,category:'車両費',taxRate:'10',taxAmount:'',note:'テスト用'}, {date:`${y}-${m}-15`,store:'【サンプル】駐車場',amount:800,category:'旅費交通費',taxRate:'10',taxAmount:'',note:'テスト用'}].map((r,i)=>({...r,id:idNew(),order:items.length+i+1,editedAt:new Date().toISOString()}));items.push(...sample);if(persist()){render();$('settingsDialog').close();notify('操作確認用のサンプルを3件追加しました')}}
 async function startCamera(){
  if(!navigator.mediaDevices?.getUserMedia){notify('カメラはHTTPSのWebページなどで利用できます');return}
+ if(cameraStarting)return;cameraStarting=true;
  lastScanCandidate=null;$('scanUsePartial').hidden=true;clearOCRDisplay();
+ if(stream){stream.getTracks().forEach(t=>t.stop());stream=null}
  try{
-  stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:'environment'},width:{ideal:2560},height:{ideal:1920},frameRate:{ideal:30}}});
+  $('scanStatus').textContent='カメラを起動しています…';
+  const s=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:'environment'},width:{ideal:3840},height:{ideal:2880},frameRate:{ideal:30}}});
+  if(!$('cameraDialog').open){s.getTracks().forEach(t=>t.stop());return}
+  stream=s;
   const video=$('cameraVideo');video.srcObject=stream;await video.play();
-  // No unconditional zoom: cropping a receipt removes date/total and reduces actual OCR accuracy.
-  const setting=stream.getVideoTracks()[0]?.getSettings?.()||{};
+  const track=stream.getVideoTracks()[0];
+  // Continuous autofocus where the browser exposes it (ignored elsewhere). No zoom: cropping loses date/total.
+  try{const caps=track?.getCapabilities?.()||{};if(Array.isArray(caps.focusMode)&&caps.focusMode.includes('continuous'))await track.applyConstraints({advanced:[{focusMode:'continuous'}]})}catch{}
+  const setting=track?.getSettings?.()||{};
   $('scanStatus').textContent=`映像 ${setting.width||video.videoWidth}×${setting.height||video.videoHeight}。文字が小さい・読み取れないときは「高画質カメラ」を押してください。`;
- }catch(e){console.error(e);$('scanStatus').textContent='カメラを開始できません。Safariのカメラ権限・HTTPS接続を確認してください。'}
+ }catch(e){console.error(e);
+  const name=e?.name||'';
+  $('scanStatus').textContent=name==='NotAllowedError'?'カメラの使用が許可されていません。Safariの「ぁあ」→Webサイトの設定→カメラを「許可」にして、「映像から読み取る」を押してください。高画質カメラは許可なしでも使えます。':name==='NotFoundError'||name==='OverconstrainedError'?'使用できるカメラが見つかりません。「高画質カメラ」をお試しください。':name==='NotReadableError'?'カメラを他のアプリが使用中です。他のアプリを閉じてから「映像から読み取る」を押してください。':'カメラを開始できません。HTTPS接続とカメラ権限を確認し、「映像から読み取る」で再試行してください。';
+ }finally{cameraStarting=false}
 }
 function toggleCameraFit(){fitFullFrame=!fitFullFrame;$('cameraStage').classList.toggle('fit-whole',fitFullFrame);$('cameraFit').textContent=fitFullFrame?'拡大表示':'全体表示';$('cameraFit').setAttribute('aria-pressed',String(fitFullFrame));$('scanStatus').textContent=fitFullFrame?'映像全体を表示しています。文字が読める距離に調整してください。':'大きく表示しています。端が切れる場合は「全体表示」に切り替えてください。'}
 function stopCamera(){autoScan=false;clearInterval(autoScanTimer);autoScanTimer=null;$('toggleAuto').textContent='自動スキャン：OFF';if(stream){stream.getTracks().forEach(t=>t.stop());stream=null}const video=$('cameraVideo');video.pause();video.srcObject=null}
@@ -261,70 +526,97 @@ async function loadTesseract(){
   await new Promise((resolve,reject)=>{const script=document.createElement('script');script.src='https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';script.onload=resolve;script.onerror=()=>reject(new Error('OCRライブラリを取得できませんでした。ネット接続をご確認ください'));document.head.appendChild(script)})
  }
  $('scanStatus').textContent='日本語文字認識データの準備中…';
- worker=await window.Tesseract.createWorker(['jpn','eng'],1,{logger:m=>{if(isScanning&&m.status&&m.progress!==undefined)$('scanStatus').textContent=`${m.status} ${Math.round(m.progress*100)}%`},errorHandler:e=>{console.error('OCR worker error',e);$('scanStatus').textContent='認識エンジンでエラーが発生しました。ページを再読み込みしてください。'}});
- await worker.setParameters({tessedit_pageseg_mode:'3',preserve_interword_spaces:'1',user_defined_dpi:'300'});
+ const created=await window.Tesseract.createWorker(['jpn','eng'],1,{logger:m=>{if(isScanning&&m.status==='recognizing text'&&m.progress!==undefined)$('scanStatus').textContent=`${currentPassLabel} ${Math.round(m.progress*100)}%`},errorHandler:e=>{console.error('OCR worker error',e);if(worker===created){worker=null;created.terminate().catch(()=>{})}$('scanStatus').textContent='認識エンジンでエラーが発生しました。もう一度「読み取る」を押すと再起動します。'}});
+ await created.setParameters({tessedit_pageseg_mode:'3',preserve_interword_spaces:'1',user_defined_dpi:'300'});
+ worker=created;
  return worker;
 }
-function normalizedDate(s){
- const a=String(s).normalize('NFKC').match(/(20\d{2})\s*[/\.年\-]\s*(\d{1,2})\s*[/\.月\-]\s*(\d{1,2})\s*日?/);
- if(!a)return null;
- const y=Number(a[1]),m=Number(a[2]),d=Number(a[3]);const dt=new Date(y,m-1,d);
- if(dt.getFullYear()!==y||dt.getMonth()+1!==m||dt.getDate()!==d)return null;
- return `${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+// ---- OCR image helpers (canvas only; images never leave this page) ----
+function makeView(source,{cx,cy,cropW,cropH,angle=0,scale=1}){
+ const c=document.createElement('canvas');c.width=Math.max(1,Math.round(cropW*scale));c.height=Math.max(1,Math.round(cropH*scale));
+ const ctx=c.getContext('2d',{alpha:false,willReadFrequently:true});ctx.fillStyle='#fff';ctx.fillRect(0,0,c.width,c.height);
+ ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';
+ ctx.translate(c.width/2,c.height/2);ctx.scale(scale,scale);ctx.rotate(-angle);ctx.translate(-cx,-cy);ctx.drawImage(source,0,0);
+ return {canvas:c,region:{cx,cy,angle,scale,cw:c.width,ch:c.height}};
 }
-function extractReceipt(text){
- const lines=String(text||'').normalize('NFKC').replace(/\r/g,'').split('\n').map(t=>t.replace(/\s+/g,' ').trim()).filter(Boolean);
- let date='';for(const line of lines){date=normalizedDate(line)||'';if(date)break}
- // A "total" should be tied to its label; arbitrary receipt prices are not reliable substitutes.
- const strong=/(?:税込(?:合計|金額)|総合計|お支払(?:い)?(?:金額|合計)?|ご請求(?:金額)?|お買い上げ(?:金額|計)?|お買上(?:金額|計)?|合\s*計|TOTAL|現\s*計)/i;
- const excluded=/(?:お預かり|お預り|おつり|釣銭|内税|消費税|税率|外税|小計|値引き|ポイント|税抜合計|合計点数)/i;
- const findMoney=line=>{
-   const cleaned=String(line||'').replace(/(?<=\d)\s+(?=\d{3}(?:\D|$))/g,',');
-   const matches=[...cleaned.matchAll(/(?:[¥￥]\s*)?([0-9]{1,3}(?:[,，][0-9]{3})+|[0-9]{1,8})(?:\s*円)?/g)];
-   const vals=matches.filter(x=>!/^\s*%/.test(cleaned.slice(x.index+x[0].length))).map(x=>Number(x[1].replace(/[,，]/g,''))).filter(n=>Number.isSafeInteger(n)&&n>0&&n<100000000);
-   return vals.length?vals[0]:null;
- };
- let amount=null;
- // Prefer the last labeled grand total, but never take a number from another receipt line randomly.
- for(let i=lines.length-1;i>=0;i--){
-  const line=lines[i];if(!strong.test(line)||excluded.test(line))continue;
-  const labelPos=line.search(strong), tail=line.slice(labelPos).replace(strong,'');
-  const same=findMoney(tail);
-  const next=i+1<lines.length&&!strong.test(lines[i+1])&&!excluded.test(lines[i+1])&&/^(?:[¥￥\d]|金額)/.test(lines[i+1])?findMoney(lines[i+1]):null;
-  const candidate=same??next;
-  if(candidate!==null){amount=candidate;break;}
+// Flatten uneven lighting (shadows, dark rooms, faded thermal print): divide by a coarse paper-brightness map,
+// then stretch contrast. Output is grayscale; no hard binarization (Tesseract's LSTM works better on gray).
+function normalizeIllumination(canvas){
+ const w=canvas.width,h=canvas.height,ctx=canvas.getContext('2d',{willReadFrequently:true}),img=ctx.getImageData(0,0,w,h),d=img.data;
+ const bs=Math.max(12,Math.round(Math.min(w,h)/22)),gw=Math.ceil(w/bs),gh=Math.ceil(h/bs),grid=new Float32Array(gw*gh);
+ const gray=i=>d[i]*.299+d[i+1]*.587+d[i+2]*.114;
+ for(let gy=0;gy<gh;gy++)for(let gx=0;gx<gw;gx++){
+  let sum=0,n=0;const xs=gx*bs,ys=gy*bs,xe=Math.min(w,xs+bs),ye=Math.min(h,ys+bs);
+  for(let y=ys;y<ye;y+=3)for(let x=xs;x<xe;x+=3){sum+=gray((y*w+x)*4);n++}
+  const mean=sum/Math.max(1,n);let s2=0,n2=0;
+  for(let y=ys;y<ye;y+=3)for(let x=xs;x<xe;x+=3){const v=gray((y*w+x)*4);if(v>=mean){s2+=v;n2++}}
+  grid[gy*gw+gx]=n2?s2/n2:mean;
  }
- let store='';for(const line of lines.slice(0,Math.min(lines.length,10))){
-  if(/^(?:20\d{2}|\d{1,2}[:：]\d{2}|TEL|電話|登録番号|〒|\d{3}-\d{4}|領収書|領収証|レシート|No[\.:]|インボイス)/i.test(line))continue;
-  if(line.length>=2&&line.length<=55&&/[ぁ-んァ-ン一-龠A-Za-z]/.test(line)&&!/(合計|消費税|金額|お買|税率|領収|レシート|ありがとう|ご利用)/.test(line)){store=line;break}
+ const dil=new Float32Array(grid.length); // 3x3 max: blocks covered by bold text borrow paper brightness from neighbours
+ for(let gy=0;gy<gh;gy++)for(let gx=0;gx<gw;gx++){let m=0;for(let oy=-1;oy<=1;oy++)for(let ox=-1;ox<=1;ox++){const yy=gy+oy,xx=gx+ox;if(yy>=0&&yy<gh&&xx>=0&&xx<gw)m=Math.max(m,grid[yy*gw+xx])}dil[gy*gw+gx]=m}
+ const hist=new Uint32Array(256);
+ for(let y=0;y<h;y++){
+  const fy=Math.min(gh-1.001,Math.max(0,(y+.5)/bs-.5)),y0=Math.floor(fy),ty=fy-y0,y1=Math.min(gh-1,y0+1);
+  for(let x=0;x<w;x++){
+   const fx=Math.min(gw-1.001,Math.max(0,(x+.5)/bs-.5)),x0=Math.floor(fx),tx=fx-x0,x1=Math.min(gw-1,x0+1);
+   const bg=(dil[y0*gw+x0]*(1-tx)+dil[y0*gw+x1]*tx)*(1-ty)+(dil[y1*gw+x0]*(1-tx)+dil[y1*gw+x1]*tx)*ty;
+   const i=(y*w+x)*4;let v=gray(i)*255/Math.max(24,bg);v=v>255?255:v;d[i]=v;hist[v|0]++;
+  }
  }
- const normalized=String(text||'').normalize('NFKC');
- let rate='';if(/(?:軽減|8\s*%)/.test(normalized)&&/10\s*%/.test(normalized))rate='mixed';else if(/10\s*%/.test(normalized))rate='10';else if(/8\s*%/.test(normalized))rate='8';
- let taxAmount='';const taxLine=lines.find(x=>/(?:消費税額|内消費税|うち消費税)/.test(x));if(taxLine){const n=findMoney(taxLine);if(n!==null)taxAmount=n}
- return {date,store,amount,rate,taxAmount};
+ let lo=0,c=0;const total=w*h;for(let i=0;i<256;i++){c+=hist[i];if(c>=total*.004){lo=i;break}}
+ const k=255/Math.max(40,250-lo);
+ for(let i=0;i<d.length;i+=4){let v=(d[i]-lo)*k;v=v<0?0:v>255?255:v;d[i]=d[i+1]=d[i+2]=v}
+ ctx.putImageData(img,0,0);
 }
-function enhancedForOCR(source){
- // Keep the source untouched; enhancement is a *second* OCR candidate only.
- const max=1950,ratio=Math.min(1,max/Math.max(source.width,source.height));
- const out=document.createElement('canvas');out.width=Math.round(source.width*ratio);out.height=Math.round(source.height*ratio);
- const ctx=out.getContext('2d',{willReadFrequently:true});ctx.drawImage(source,0,0,out.width,out.height);
- const pixels=ctx.getImageData(0,0,out.width,out.height),data=pixels.data;
- const histogram=new Uint32Array(256);let sampleCount=0;
- for(let i=0;i<data.length;i+=32){const n=Math.round(data[i]*.299+data[i+1]*.587+data[i+2]*.114);histogram[n]++;sampleCount++}
- let count=0,lo=0,hi=255;
- for(let i=0;i<256;i++){count+=histogram[i];if(count>=sampleCount*.025){lo=i;break}}
- count=0;for(let i=255;i>=0;i--){count+=histogram[i];if(count>=sampleCount*.025){hi=i;break}}
- const range=Math.max(65,hi-lo);
- for(let i=0;i<data.length;i+=4){let v=(data[i]*.299+data[i+1]*.587+data[i+2]*.114-lo)*255/range;v=Math.max(0,Math.min(255,(v-128)*1.12+128));data[i]=data[i+1]=data[i+2]=v}
- ctx.putImageData(pixels,0,0);return out;
+function grayGrid(source,longSide){
+ const k=Math.min(1,longSide/Math.max(source.width,source.height)),w=Math.max(1,Math.round(source.width*k)),h=Math.max(1,Math.round(source.height*k));
+ const c=document.createElement('canvas');c.width=w;c.height=h;const ctx=c.getContext('2d',{willReadFrequently:true});ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';ctx.drawImage(source,0,0,w,h);
+ const d=ctx.getImageData(0,0,w,h).data,gray=new Float32Array(w*h);for(let i=0;i<gray.length;i++)gray[i]=d[i*4]*.299+d[i*4+1]*.587+d[i*4+2]*.114;c.width=0;c.height=0;
+ return {gray,w,h,toSource:source.width/w};
 }
-function candidateScore(c){const p=c.parsed;return (p.amount!==null?7:0)+(p.date?4:0)+(p.store?2:0)+Math.min(3,Math.max(0,(Number(c.confidence)||0)/35))+Math.min(2,c.text.length/200)}
+// Paper rectangle (source px) and text skew (radians), both from small downscaled copies: fast and memory-light.
+function analyzeImage(source){
+ let paper=null,skew=0;
+ try{
+  const g=grayGrid(source,96),r=ReceiptOCR.paperRect(g.gray,g.w,g.h);
+  if(r)paper={x0:r.x0*g.toSource,y0:r.y0*g.toSource,x1:r.x1*g.toSource,y1:r.y1*g.toSource};
+  const s=grayGrid(source,640),k=1/s.toSource;
+  skew=ReceiptOCR.estimateSkew(s.gray,s.w,s.h,paper?{x0:paper.x0*k,y0:paper.y0*k,x1:paper.x1*k,y1:paper.y1*k}:null);
+ }catch(e){console.warn('image analysis skipped',e)}
+ return {paper,skew};
+}
+// Turn one Tesseract result into overlay boxes (source-image coordinates) and visual text rows for parsing.
+function readPass(data,region,label,keep){
+ const lines=ReceiptOCR.linesFromData(data||{}),boxes=[],rows=[];
+ for(const l of lines){
+  const cyCanvas=(l.bbox.y0+l.bbox.y1)/2;if(keep&&!keep(cyCanvas))continue;
+  for(const s of l.segments){if(!s.text)continue;const m=ReceiptOCR.mapBox(region,s.bbox);boxes.push({text:s.text,conf:s.conf,...m,pass:label})}
+ }
+ // group segments into visual rows (Tesseract may put the item name and price in different blocks)
+ const slope=(()=>{const v=lines.map(l=>l.slope).filter(x=>x!==null).sort((a,b)=>a-b);return v.length?v[Math.floor(v.length/2)]:0})()+region.angle;
+ const cs=Math.cos(slope),sn=Math.sin(slope);
+ const q=boxes.map(b=>({b,x:b.cx*cs+b.cy*sn,y:-b.cx*sn+b.cy*cs})).sort((a,b)=>a.y-b.y);
+ for(const it of q){const row=rows.find(r=>Math.abs(r.y-it.y)<Math.min(r.h,it.b.h)*.55);if(row){row.items.push(it);row.h=Math.max(row.h,it.b.h)}else rows.push({y:it.y,h:it.b.h,items:[it]})}
+ rows.sort((a,b)=>a.y-b.y);
+ const textRows=rows.map(r=>({text:r.items.sort((a,b)=>a.x-b.x).map(i=>i.b.text).join(' '),h:r.h}));
+ return {label,confidence:Number(data?.confidence)||0,boxes,rows:textRows,text:textRows.map(r=>r.text).join('\n')};
+}
+function boxesOverlap(a,b){return Math.abs(a.cx-b.cx)<(a.w+b.w)/2*.9&&Math.abs(a.cy-b.cy)<(a.h+b.h)/2*.7}
 function useScanCandidate(){if(!lastScanCandidate)return;
- const {parsed,ambiguous}=lastScanCandidate;
+ const r=lastScanCandidate.result;
  stopCamera();$('cameraDialog').close();
- openForm({date:parsed.date||'',store:parsed.store||'',amount:ambiguous?'':parsed.amount??'',category:'その他',taxRate:parsed.rate,taxAmount:parsed.taxAmount,note:''},
-  `OCRの読み取り候補です。${ambiguous?'合計金額に複数の候補があったため空欄にしました。':''}日付・店名・合計金額・税率は必ず紙の領収書と照合し、間違っていれば修正してください。`);
- editId=null;
+ const amountSure=r.amount!==null&&r.status.amount!=='conflict';
+ openForm({date:r.date||'',store:r.store||'',amount:amountSure?r.amount:'',category:'その他',taxRate:r.rate,taxAmount:r.taxAmount,note:''},'ocr');
+ editId=null;$('editTitle').textContent='読み取り内容を確認';
+ const notice=$('ocrNotice');notice.replaceChildren();notice.hidden=false;
+ const p=document.createElement('p');p.style.margin='0';
+ const amountMsg={verified:'合計金額は「'+(r.amountCandidates[0]?.why||[]).join('・')+'」と一致しました。',majority:'合計金額は複数回の読み取りで多かった値です。',single:'合計金額は1か所からの読み取りです。',conflict:'合計金額の候補が一致しないため空欄にしました。下の候補から選ぶか入力してください。',missing:'合計金額を読み取れませんでした。入力してください。'}[r.status.amount]||'';
+ const dateMsg=r.status.date==='conflict'?'日付の候補が複数あるため空欄にしました。':r.status.date==='missing'?'日付を読み取れませんでした。':'';
+ p.textContent='OCRの読み取り候補です。'+amountMsg+dateMsg+'日付・店名・金額・税率は必ず紙の領収書と照合してください。';
+ notice.append(p);
+ const chipRow=(title,list,apply)=>{if(!list.length)return;const row=document.createElement('div');row.className='ocr-chips';const t=document.createElement('span');t.textContent=title;row.append(t);for(const c of list){const b=document.createElement('button');b.type='button';b.className='ocr-chip';b.textContent=c.label;b.addEventListener('click',()=>{apply(c.value);notify(title.replace('：','')+'に '+c.label+' を入れました')});row.append(b)}notice.append(row)};
+ chipRow('金額候補：',r.amountCandidates.map(c=>({value:c.value,label:yen(c.value)+(c.why.length?'（'+c.why.join('・')+'で検算一致）':'')})),v=>{$('entryAmount').value=v});
+ if(r.status.date!=='ok')chipRow('日付候補：',r.dateCandidates.map(d=>({value:d,label:d.replace(/-/g,'/')})),v=>{$('entryDate').value=v});
 }
 
 // Image input never becomes an app record and is not uploaded to a server.
@@ -332,72 +624,46 @@ function clearCapturedImage(){const c=$('ocrPreview');c.width=1;c.height=1;}
 function drawCapturedPreview(canvas){const c=$('ocrPreview'),scale=Math.min(1,550/Math.max(canvas.width,canvas.height));c.width=Math.max(1,Math.round(canvas.width*scale));c.height=Math.max(1,Math.round(canvas.height*scale));c.getContext('2d').drawImage(canvas,0,0,c.width,c.height);}
 
 function clearOCRDisplay(){
- const stage=$('cameraStage');stage.classList.remove('has-ocr');$('ocrOverlay').replaceChildren();
+ const stage=$('cameraStage');stage.classList.remove('has-ocr');$('ocrOverlay').replaceChildren();$('ocrBadge').hidden=true;$('ocrTextToggle').hidden=true;
  const freeze=$('ocrFreeze');freeze.width=1;freeze.height=1;lastOCRFrameSize=null;lastOCRBoxes=[];
 }
 function freezeOCRFrame(source){
- const canvas=$('ocrFreeze'),ratio=Math.min(1,1200/Math.max(source.width,source.height));
+ const canvas=$('ocrFreeze'),ratio=Math.min(1,1600/Math.max(source.width,source.height));
  canvas.width=Math.max(1,Math.round(source.width*ratio));canvas.height=Math.max(1,Math.round(source.height*ratio));
  canvas.getContext('2d',{alpha:false}).drawImage(source,0,0,canvas.width,canvas.height);
  lastOCRFrameSize={width:source.width,height:source.height};
- $('cameraStage').classList.add('has-ocr');
+ $('cameraStage').classList.add('has-ocr');layoutOCRFrame();
 }
-function locateTextLines(data,region){
- let entries=[];
- if(Array.isArray(data.lines)&&data.lines.length)entries=data.lines;
- else if(Array.isArray(data.words)&&data.words.length)entries=data.words;
- else if(Array.isArray(data.blocks))for(const b of data.blocks)for(const p of b.paragraphs||[])for(const l of p.lines||[])entries.push(l);
- if(!entries.length&&typeof data.tsv==='string'){
-  const rows=data.tsv.trim().split(/\r?\n/).slice(1),groups=new Map();
-  for(const row of rows){
-   const p=row.split('\t');if(p.length<12||p[0]!=='5'||!p.slice(11).join('\t').trim())continue;
-   const key=p.slice(1,5).join(':'),left=Number(p[6]),top=Number(p[7]),width=Number(p[8]),height=Number(p[9]);
-   if(![left,top,width,height].every(Number.isFinite)||width<=0||height<=0)continue;
-   const old=groups.get(key)||{text:'',bbox:{x0:left,y0:top,x1:left+width,y1:top+height},confidence:0};
-   old.text+=(old.text?' ':'')+p.slice(11).join('\t');old.bbox.x0=Math.min(old.bbox.x0,left);old.bbox.y0=Math.min(old.bbox.y0,top);
-   old.bbox.x1=Math.max(old.bbox.x1,left+width);old.bbox.y1=Math.max(old.bbox.y1,top+height);
-   old.confidence=Math.max(old.confidence,Number(p[10])||0);groups.set(key,old);
-  }
-  entries=[...groups.values()];
- }
- const mapped=[];
- for(const entry of entries){
-  const b=entry.bbox||entry.box,txt=String(entry.text||'').replace(/\s+/g,' ').trim();
-  if(!b||!txt)continue;
-  const x0=Number(b.x0??b.left),y0=Number(b.y0??b.top),x1=Number(b.x1??((b.left||0)+(b.width||0))),y1=Number(b.y1??((b.top||0)+(b.height||0)));
-  if(![x0,y0,x1,y1].every(Number.isFinite)||x1<=x0||y1<=y0)continue;
-  const scaleX=region.width/region.renderWidth,scaleY=region.height/region.renderHeight;
-  mapped.push({text:txt,x:region.x+x0*scaleX,y:region.y+y0*scaleY,w:(x1-x0)*scaleX,h:(y1-y0)*scaleY,confidence:Number(entry.confidence)||0});
- }
- return mapped;
+// Place the frozen frame + overlay exactly where object-fit:contain would draw it. Boxes are in % of the
+// frame, so a later resize (button appearing, rotation, help panel) only needs this function again.
+function layoutOCRFrame(){
+ const size=lastOCRFrameSize,stage=$('cameraStage'),frame=$('ocrFrame');if(!size)return;
+ const W=stage.clientWidth,H=stage.clientHeight;if(!W||!H)return;
+ const r=ReceiptOCR.containRect(size.width,size.height,W,H);
+ Object.assign(frame.style,{left:r.x+'px',top:r.y+'px',width:r.w+'px',height:r.h+'px'});
+ frame.style.setProperty('--k',String(r.k));
+ for(const el of $('ocrOverlay').children){const t=el.firstChild;if(!t)continue;t.style.transform='';const over=t.scrollWidth/Math.max(1,el.clientWidth-2);t.style.transform=over>1.02?`scaleX(${(1/over).toFixed(3)})`:''}
 }
 function renderOCRBoxes(boxes){
- lastOCRBoxes=boxes;const overlay=$('ocrOverlay'),size=lastOCRFrameSize,stage=$('cameraStage');overlay.replaceChildren();
- if(!size||!boxes.length)return;
- const stageW=stage.clientWidth,stageH=stage.clientHeight;if(!stageW||!stageH)return;
- const scale=Math.min(stageW/size.width,stageH/size.height),offX=(stageW-size.width*scale)/2,offY=(stageH-size.height*scale)/2;
- const seen=new Set(),frag=document.createDocumentFragment();let count=0;
- for(const box of boxes){
-  const labelText=box.text.trim();if(!labelText||labelText.length>95)continue;
-  const key=[Math.round(box.x/22),Math.round(box.y/13),labelText.slice(0,15)].join(':');
-  if(seen.has(key))continue;seen.add(key);
-  const x=offX+box.x*scale,y=offY+box.y*scale;
-  if(x<0||y<0||x>=stageW||y>=stageH)continue;
-  const label=document.createElement('span');label.className='ocr-box';label.textContent=labelText;label.title=labelText;
-  label.style.left=Math.max(0,Math.round(x))+'px';label.style.top=Math.max(0,Math.round(y))+'px';
-  label.style.maxWidth=Math.max(34,Math.min(stageW-x-3,Math.max(64,box.w*scale+40)))+'px';
-  frag.append(label);if(++count>=65)break;
+ lastOCRBoxes=boxes;const overlay=$('ocrOverlay'),size=lastOCRFrameSize;overlay.replaceChildren();
+ const badge=$('ocrBadge');badge.hidden=false;$('ocrTextToggle').hidden=!boxes.length;
+ if(!size)return;
+ if(!boxes.length){badge.textContent='文字の位置を検出できませんでした';return}
+ const frag=document.createDocumentFragment();let count=0;
+ for(const b of boxes){
+  if(!b.text||b.text.length>120||b.w<2||b.h<2)continue;
+  const el=document.createElement('span');el.className='ocr-box'+(b.conf<55?' low':'');el.dataset.text=b.text;el.title=b.text+'（信頼度 '+Math.round(b.conf)+'%）';
+  Object.assign(el.style,{left:((b.cx-b.w/2)/size.width*100)+'%',top:((b.cy-b.h/2)/size.height*100)+'%',width:(b.w/size.width*100)+'%',height:(b.h/size.height*100)+'%'});
+  if(Math.abs(b.angle)>.002)el.style.transform=`rotate(${b.angle}rad)`;
+  el.style.setProperty('--bh',String(b.h));
+  const t=document.createElement('span');t.textContent=b.text;el.append(t);
+  el.addEventListener('click',()=>{$('scanStatus').textContent='読取：'+b.text+'（信頼度 '+Math.round(b.conf)+'%）'});
+  frag.append(el);if(++count>=160)break;
  }
- const indicator=document.createElement('div');indicator.className='ocr-overlay-label';indicator.textContent='文字認識 '+count+'箇所 · 内容を確認';
- frag.append(indicator);overlay.append(frag);
+ overlay.append(frag);badge.textContent='文字認識 '+count+'箇所 · 文字をタップで拡大';
+ layoutOCRFrame();
 }
-function splitReceiptForSmallText(source,index){
- const w=source.width,h=source.height,y=index===0?0:Math.round(h*.43),cropH=Math.min(h-y,Math.round(h*.57));
- const max=2950,targetRatio=Math.min(2,max/Math.max(w,cropH)),scale=Math.max(1,targetRatio);
- const canvas=document.createElement('canvas');canvas.width=Math.max(1,Math.round(w*scale));canvas.height=Math.max(1,Math.round(cropH*scale));
- canvas.getContext('2d',{alpha:false}).drawImage(source,0,y,w,cropH,0,0,canvas.width,canvas.height);
- return {canvas,region:{x:0,y,width:w,height:cropH,renderWidth:canvas.width,renderHeight:canvas.height}};
-}
+function toggleOCRText(){ocrTextVisible=!ocrTextVisible;$('cameraStage').classList.toggle('ocr-text-hidden',!ocrTextVisible);$('ocrTextToggle').textContent=ocrTextVisible?'文字を隠す':'文字を表示';$('ocrTextToggle').setAttribute('aria-pressed',String(!ocrTextVisible))}
 function toggleSmallTextMode(){
  smallTextMode=!smallTextMode;
  $('smallTextToggle').textContent='小さい文字：強化'+(smallTextMode?'ON':'OFF');
@@ -417,77 +683,89 @@ async function captureVideoBestFrame(video){
  }
  return {canvas:best,sharpness:score};
 }
-function receiptCentralCrop(source){
- const c=document.createElement('canvas'),w=source.width,h=source.height;
- c.width=Math.max(1,Math.round(w*.86));c.height=Math.max(1,Math.round(h*.92));
- c.getContext('2d',{alpha:false}).drawImage(source,Math.round(w*.07),Math.round(h*.04),Math.round(w*.86),Math.round(h*.92),0,0,c.width,c.height);
- return c;
+async function runPass(ocr,canvas,label,psm){
+ currentPassLabel=label;$('scanStatus').textContent=label+' を認識中…';
+ await ocr.setParameters({tessedit_pageseg_mode:String(psm)});
+ const t=performance.now(),result=await ocr.recognize(canvas,{},{text:true,blocks:true,hocr:false,tsv:false});
+ return {data:result.data||{},ms:Math.round(performance.now()-t)};
 }
 async function recognizeCanvas(source,{mode='video',sharpness=null}={}){
  if(isScanning||!source)return;
  isScanning=true;$('scanNow').disabled=true;$('highResCapture').disabled=true;$('scanUsePartial').hidden=true;lastScanCandidate=null;
- let enhanced=null,cropped=null;const tileCanvases=[];
+ const temp=[];const free=c=>{if(c){c.width=0;c.height=0}};
+ const log=[];
  try{
   clearOCRDisplay();freezeOCRFrame(source);drawCapturedPreview(source);
-  $('ocrDebug').textContent='入力：'+source.width+'×'+source.height+'ピクセル／'+(mode==='still'?'高画質撮影':'動画フレーム')+(sharpness!==null?'／鮮明度指数 '+sharpness.toFixed(0):'')+'。画像は経費記録に保存しません。';
-  const ocr=await loadTesseract(),candidates=[];
-  const addCandidate=async(image,label,psm,region)=>{
-   $('scanStatus').textContent=label+' を認識中…';
-   await ocr.setParameters({tessedit_pageseg_mode:String(psm)});
-   const result=await ocr.recognize(image),data=result.data||{},recognizedText=data.text||'';
-   candidates.push({text:recognizedText,confidence:data.confidence||0,parsed:extractReceipt(recognizedText),boxes:locateTextLines(data,region)});
-  };
-  const full={x:0,y:0,width:source.width,height:source.height,renderWidth:source.width,renderHeight:source.height};
-  await addCandidate(source,'全体画像（1回目）',3,full);
-  const first=candidates[0];
-  if(smallTextMode||!first.parsed.date||!first.parsed.store||first.parsed.amount===null||first.confidence<80){
-   enhanced=enhancedForOCR(source);
-   await addCandidate(enhanced,'明暗補正（2回目）',6,{...full,renderWidth:enhanced.width,renderHeight:enhanced.height});
+  const ocr=await loadTesseract(),cfg=OCR_CONFIG,passes=[];
+  // Pass 1: whole frame (bounded size) — layout, skew and character height.
+  const k1=Math.min(1,cfg.layoutMax/Math.max(source.width,source.height));
+  const {paper,skew}=analyzeImage(source);
+  let v1=makeView(source,{cx:source.width/2,cy:source.height/2,cropW:source.width,cropH:source.height,scale:k1,angle:skew});temp.push(v1.canvas);
+  let r1=await runPass(ocr,v1.canvas,'全体を確認（1回目）',3);free(v1.canvas);
+  const readable=d=>ReceiptOCR.linesFromData(d).filter(l=>l.conf>=cfg.minLayoutConf&&l.text.replace(/\s/g,'').length>=2).length;
+  if(skew&&readable(r1.data)<3){ // safety net: a wrong skew estimate must not cost the whole scan
+   const v0=makeView(source,{cx:source.width/2,cy:source.height/2,cropW:source.width,cropH:source.height,scale:k1});temp.push(v0.canvas);
+   const r0=await runPass(ocr,v0.canvas,'全体を確認（傾き補正なし）',3);free(v0.canvas);
+   if(readable(r0.data)>readable(r1.data)){v1=v0;r1=r0;log.push(`傾き推定${(skew*180/Math.PI).toFixed(1)}°を不採用`)}
   }
-  if(smallTextMode){
-   for(let i=0;i<2;i++){
-    const tile=splitReceiptForSmallText(source,i);tileCanvases.push(tile.canvas);
-    await addCandidate(tile.canvas,'小さい文字を拡大：'+(i===0?'上半分':'下半分'),6,tile.region);
+  const p1=readPass(r1.data,v1.region,'全体');p1.parsed=ReceiptOCR.parsePass(p1.rows);passes.push(p1);
+  log.push(`1回目 全体 ${v1.region.cw}×${v1.region.ch}px 傾き補正${(v1.region.angle*180/Math.PI).toFixed(1)}° PSM3 ${r1.ms}ms 信頼度${Math.round(p1.confidence)}%`+(paper?' 用紙検出あり':''));
+  const plan=ReceiptOCR.planDetail(ReceiptOCR.linesFromData(r1.data),v1.region,source,cfg,paper);
+  const needDetail=smallTextMode||!p1.parsed.dates.length||!p1.parsed.totals.length||p1.confidence<80;
+  let detail=null;
+  if(needDetail){
+   // Pass 2: receipt text area only, straightened, enlarged to a readable character height, lighting flattened.
+   detail={label:'詳細',confidence:0,boxes:[],rows:[],text:''};const confs=[];
+   for(let i=0;i<plan.tiles.length;i++){
+    const tile=plan.tiles[i],v=makeView(source,tile);temp.push(v.canvas);
+    if(cfg.normalize)normalizeIllumination(v.canvas);
+    const label=plan.tiles.length>1?`小さい文字を拡大（${i+1}/${plan.tiles.length}）`:'文字部分を拡大（2回目）';
+    const r=await runPass(ocr,v.canvas,label,cfg.detailPsm);
+    const keep=cy=>{const y=cy/tile.scale;return y>=tile.coreTop&&y<tile.coreBottom};
+    const p=readPass(r.data,v.region,'詳細'+(i+1),keep);free(v.canvas);
+    detail.boxes.push(...p.boxes);detail.rows.push(...p.rows);confs.push(p.confidence);
+    log.push(`${i+2}回目 拡大×${tile.scale.toFixed(2)} 傾き補正${(tile.angle*180/Math.PI).toFixed(1)}° ${v.region.cw}×${v.region.ch}px PSM${cfg.detailPsm} ${r.ms}ms 信頼度${Math.round(p.confidence)}%`);
    }
-  }else if(!candidates.some(x=>x.parsed.amount!==null&&x.parsed.date)){
-   cropped=receiptCentralCrop(source);
-   await addCandidate(cropped,'中心を拡大（追加認識）',11,{x:source.width*.07,y:source.height*.04,width:source.width*.86,height:source.height*.92,renderWidth:cropped.width,renderHeight:cropped.height});
+   detail.confidence=confs.reduce((a,b)=>a+b,0)/Math.max(1,confs.length);detail.text=detail.rows.map(r=>r.text).join('\n');detail.parsed=ReceiptOCR.parsePass(detail.rows);
+   passes.push(detail);
   }
-  const byScore=[...candidates].sort((a,b)=>candidateScore(b)-candidateScore(a)),parsed={...byScore[0].parsed};
-  for(const other of byScore.slice(1)){
-   if(!parsed.date&&other.parsed.date)parsed.date=other.parsed.date;
-   if(!parsed.store&&other.parsed.store)parsed.store=other.parsed.store;
-   if(parsed.amount===null&&other.parsed.amount!==null)parsed.amount=other.parsed.amount;
-   if(!parsed.rate&&other.parsed.rate)parsed.rate=other.parsed.rate;
+  let result=ReceiptOCR.combinePasses(passes);
+  // Adaptive tie-breaker: only when the total is still doubtful, read the text area once more without lighting correction.
+  if(needDetail&&(result.status.amount==='conflict'||result.status.amount==='missing')&&plan.tiles.length===1){
+   const tile=plan.tiles[0],v=makeView(source,tile);temp.push(v.canvas);
+   const r=await runPass(ocr,v.canvas,'合計金額を再確認（追加）',6);
+   const keep=cy=>{const y=cy/tile.scale;return y>=tile.coreTop&&y<tile.coreBottom};
+   const p=readPass(r.data,v.region,'再確認',keep);free(v.canvas);p.parsed=ReceiptOCR.parsePass(p.rows);passes.push(p);
+   log.push(`追加 補正なし PSM6 ${r.ms}ms 信頼度${Math.round(p.confidence)}%`);
+   result=ReceiptOCR.combinePasses(passes);
   }
-  const seenAmounts=[...new Set(candidates.map(c=>c.parsed.amount).filter(v=>v!==null))],ambiguous=seenAmounts.length>1;
-  $('rawText').textContent=candidates.map((c,i)=>'【'+(i+1)+'回目／信頼度 '+Math.round(c.confidence)+'%】\n'+(c.text||'文字を認識できませんでした')).join('\n\n');
+  $('rawText').textContent=passes.map((c,i)=>'【'+(i+1)+'回目 '+c.label+'／信頼度 '+Math.round(c.confidence)+'%】\n'+(c.text||'文字を認識できませんでした')).join('\n\n');
+  // Overlay: detailed boxes first (higher resolution), then first-pass boxes for anything not covered.
   const allBoxes=[];
-  for(const candidate of candidates){
-   for(const box of candidate.boxes||[]){
-    const overlapping=allBoxes.some(b=>Math.abs(b.y-box.y)<Math.max(b.h,box.h)*.65&&Math.abs(b.x-box.x)<Math.max(b.w,box.w)*.42&&b.text===box.text);
-    if(!overlapping)allBoxes.push(box);
-   }
-  }
-  allBoxes.sort((a,b)=>a.y-b.y||a.x-b.x);
+  for(const p of [...passes.slice(1),passes[0]])for(const b of p.boxes){if(!allBoxes.some(a=>boxesOverlap(a,b)))allBoxes.push(b)}
+  allBoxes.sort((a,b)=>a.cy-b.cy||a.cx-b.cx);
   renderOCRBoxes(allBoxes);
-  if(!candidates.some(c=>c.text.trim())){
+  const charPx=plan.lineHeight;
+  $('ocrDebug').textContent='入力：'+lastOCRFrameSize.width+'×'+lastOCRFrameSize.height+'px／'+(mode==='still'?'高画質撮影':'動画フレーム')+(sharpness!==null?'／鮮明度 '+sharpness.toFixed(0):'')+(charPx?'／文字の高さ 約'+Math.round(charPx)+'px':'')+'。画像は保存・送信しません。\n'+log.join('\n');
+  if(!passes.some(c=>c.text.trim())){
    $('scanStatus').textContent='文字を認識できませんでした。近づけて「高画質カメラ」で読み取るか、照明・ピントを調整してください。';return;
   }
-  lastScanCandidate={parsed,ambiguous};$('scanUsePartial').hidden=false;$('scanUsePartial').textContent='認識した文字を確認して登録へ';
-  const missing=[!parsed.date?'日付':null,!parsed.store?'店名':null,parsed.amount===null?'合計金額':null,ambiguous?'金額候補の不一致':null].filter(Boolean).join('・');
-  $('scanStatus').textContent='文字をカメラ上に表示しました（'+allBoxes.length+'箇所）。'+(missing.length?missing+'は要確認。':'日付・店名・金額の候補が見つかりました。')+'内容を照合して登録してください。';
- }catch(e){console.error(e);$('scanStatus').textContent='読み取りエラー：'+(e?.message||String(e))+'。高画質カメラかSafariの再読み込みを試してください。';
+  lastScanCandidate={result};$('scanUsePartial').hidden=false;$('scanUsePartial').textContent='認識した文字を確認して登録へ';
+  const missing=[!result.date?'日付':null,!result.store?'店名':null,result.amount===null||result.status.amount==='conflict'?'合計金額':null].filter(Boolean).join('・');
+  const hints=[];
+  if(charPx&&charPx<11)hints.push('文字が小さく写っています。もう少し近づけるか「高画質カメラ」を使うと精度が上がります。');
+  if(mode==='video'&&sharpness!==null&&sharpness<60)hints.push('ピントが甘い可能性があります。');
+  $('scanStatus').textContent='文字をカメラ上に表示しました（'+allBoxes.length+'箇所）。'+(missing?missing+'は要確認。':'日付・店名・金額の候補が見つかりました。')+hints.join('')+'内容を照合して登録してください。';
+ }catch(e){console.error(e);$('scanStatus').textContent='読み取りエラー：'+(e?.message||String(e))+'。もう一度読み取るか、高画質カメラを試してください。';
  }finally{
-  if(enhanced){enhanced.width=0;enhanced.height=0}
-  if(cropped){cropped.width=0;cropped.height=0}
-  for(const tile of tileCanvases){tile.width=0;tile.height=0}
-  if(source){source.width=0;source.height=0}
-  isScanning=false;$('scanNow').disabled=false;$('highResCapture').disabled=false;
+  for(const c of temp)free(c);
+  free(source);
+  isScanning=false;currentPassLabel='';$('scanNow').disabled=false;$('highResCapture').disabled=false;
  }
 }
 async function scanFrame(){
- if(isScanning||!stream)return;
+ if(isScanning)return;
+ if(!stream||!stream.getVideoTracks().some(t=>t.readyState==='live')){await startCamera();return}
  const video=$('cameraVideo');if(!video.videoWidth||!video.videoHeight){notify('カメラ映像を準備しています');return}
  $('scanStatus').textContent='鮮明なフレームを選択しています…';
  const result=await captureVideoBestFrame(video);
@@ -512,7 +790,9 @@ function toggleAuto(){autoScan=!autoScan;$('toggleAuto').textContent=`自動ス�
 function init(){addOptions($('monthSelect'),Array.from({length:12},(_,i)=>({value:i+1,label:`${i+1}月`})),selectedMonth);addOptions($('categoryFilter'),[{value:'',label:'すべての経費'},...CATEGORIES.map(x=>({value:x,label:x}))],'');addOptions($('entryCategory'),CATEGORIES.map(x=>({value:x,label:x})),'その他');
 $('yearSelect').addEventListener('change',e=>{selectedYear=Number(e.target.value);render()});$('monthSelect').addEventListener('change',e=>{selectedMonth=Number(e.target.value);render()});$('categoryFilter').addEventListener('change',render);$('sortSelect').addEventListener('change',render);
 $('newEntry').addEventListener('click',()=>openForm());$('addFirst').addEventListener('click',()=>openForm());$('entryForm').addEventListener('submit',saveForm);$('exportExcel').addEventListener('click',exportExcel);
-$('cameraLaunch').addEventListener('click',()=>{$('cameraDialog').showModal();startCamera()});$('scanNow').addEventListener('click',scanFrame);$('highResCapture').addEventListener('click',()=>{stopCamera();$('scanStatus').textContent='高画質カメラを起動しています。撮影後に画像を解析します。';$('highResFile').click()});$('highResFile').addEventListener('cancel',()=>{if($('cameraDialog').open)startCamera()});$('highResFile').addEventListener('change',e=>highResPhoto(e.target.files?.[0]));$('cameraFit').addEventListener('click',toggleCameraFit);$('smallTextToggle').addEventListener('click',toggleSmallTextMode);$('toggleAuto').addEventListener('click',toggleAuto);$('scanUsePartial').addEventListener('click',useScanCandidate);
+$('cameraLaunch').addEventListener('click',()=>{$('cameraDialog').showModal();startCamera()});$('scanNow').addEventListener('click',scanFrame);$('highResCapture').addEventListener('click',()=>{stopCamera();$('scanStatus').textContent='高画質カメラを起動しています。撮影後に画像を解析します。';$('highResFile').click()});$('highResFile').addEventListener('cancel',()=>{if($('cameraDialog').open)startCamera()});$('highResFile').addEventListener('change',e=>highResPhoto(e.target.files?.[0]));$('cameraFit').addEventListener('click',toggleCameraFit);$('smallTextToggle').addEventListener('click',toggleSmallTextMode);$('ocrTextToggle').addEventListener('click',toggleOCRText);
+if(window.ResizeObserver)new ResizeObserver(()=>layoutOCRFrame()).observe($('cameraStage'));else window.addEventListener('resize',layoutOCRFrame);
+window.addEventListener('pagehide',()=>{stopCamera();if(worker){worker.terminate().catch(()=>{});worker=null}});$('toggleAuto').addEventListener('click',toggleAuto);$('scanUsePartial').addEventListener('click',useScanCandidate);
 $('openSettings').addEventListener('click',()=>$('settingsDialog').showModal());$('backupJson').addEventListener('click',backup);$('importJson').addEventListener('click',()=>$('jsonFile').click());$('jsonFile').addEventListener('change',e=>importBackup(e.target.files?.[0]));$('loadDemo').addEventListener('click',demo);
 $('clearAll').addEventListener('click',()=>{if(!confirm(`登録した全${items.length}件を完全に削除します。よろしいですか？`))return;const old=items;items=[];if(persist()){render();$('settingsDialog').close();notify('全件削除しました')}else items=old});
 document.querySelectorAll('[data-close]').forEach(el=>el.addEventListener('click',()=>closeDialog(el.dataset.close)));$('cameraDialog').addEventListener('close',()=>{stopCamera();clearCapturedImage();clearOCRDisplay()});

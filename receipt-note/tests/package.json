@@ -1,0 +1,12 @@
+{
+  "name": "receipt-note-tests",
+  "private": true,
+  "description": "Automated tests for receipt-note/index.html (not deployed code; synthetic fixtures only)",
+  "scripts": {
+    "test": "node run-all.mjs"
+  },
+  "devDependencies": {
+    "playwright": "1.65.0",
+    "tesseract.js": "5.1.1"
+  }
+}

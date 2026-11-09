@@ -42,3 +42,20 @@ export const FIXTURES = [
   { id: 'stress-12px-noise', content: 'd', bodyPx: 12, noise: 22, jpeg: 0.55, shade: 0.3, ...V },
   { id: 'stress-11px-tilt', content: 'a', bodyPx: 11, rotateDeg: 3, inkColor: '#555', ...V },
 ];
+
+// Thermal-printer receipts photographed by a phone (dot-matrix glyphs, 倍角 store name/total, JPEG, blur).
+// These model the failure reported on a real device (large digits not read): dots separate at high resolution.
+const PHOTO = { frameW: 3024, frameH: 4032, jpeg: 0.85, thermal: true, cols: 42 };
+const VIDEO = { frameW: 1080, frameH: 1920, jpeg: 0.8, thermal: true, cols: 42 };
+export const THERMAL = [
+  { id: 'th-photo-close', content: 'a', bodyPx: 96, blur: 1.2, rotateDeg: 2, ...PHOTO },
+  { id: 'th-photo-mid', content: 'b', bodyPx: 64, blur: 1.5, ...PHOTO },
+  { id: 'th-photo-far', content: 'c', bodyPx: 44, blur: 1.5, rotateDeg: -3, ...PHOTO },
+  { id: 'th-photo-tall', content: 'd', bodyPx: 72, blur: 1.2, totalStyle: 'tall', ...PHOTO },
+  { id: 'th-photo-faded', content: 'a', bodyPx: 64, blur: 1.5, inkGray: 105, totalStyle: 'wide', ...PHOTO },
+  { id: 'th-photo-shadow', content: 'b', bodyPx: 80, blur: 1.5, shade: 0.5, ...PHOTO },
+  { id: 'th-video-28', content: 'c', bodyPx: 28, blur: 0.8, ...VIDEO },
+  { id: 'th-video-22', content: 'd', bodyPx: 22, blur: 0.7, rotateDeg: 3, ...VIDEO },
+  { id: 'th-video-18', content: 'a', bodyPx: 18, blur: 0.6, ...VIDEO },
+  { id: 'th-video-34-tilt', content: 'b', bodyPx: 34, blur: 1, rotateDeg: -6, ...VIDEO },
+];

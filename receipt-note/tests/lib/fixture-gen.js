@@ -29,8 +29,46 @@
   }
 
   // Render one receipt (paper) at a given body font size (px), then place it into a photo-like frame.
+  // Thermal POS printer look: glyphs rasterized on the printer's dot grid (24 dots per line, half-width
+  // digits 12 dots wide), printed as separate round dots; store name / total in double size (倍角).
+  function thermalPaper(spec, v) {
+    const font = spec.font || '"MS Gothic","BIZ UDGothic",monospace';
+    const cols = spec.cols || 32, D = 24, paperW = cols * 12 + 32, pad = 16, gap = 8;
+    const big = spec.totalStyle || 'double'; // double | tall | wide
+    const lines = receiptLines(v).map(l => ({ ...l, size: l.role === 'store' || l.role === 'total' ? 2 : 1, mode: l.role === 'store' ? 'double' : l.role === 'total' ? big : 'normal' }));
+    let y = pad; for (const ln of lines) { ln.h = ln.mode === 'normal' || ln.mode === 'wide' ? D : 2 * D; ln.y = y; y += ln.h + gap; }
+    const paperH = y + pad;
+    const c = document.createElement('canvas'); c.width = paperW; c.height = paperH;
+    const p = c.getContext('2d'); p.fillStyle = '#fff'; p.fillRect(0, 0, paperW, paperH); p.fillStyle = '#000'; p.textBaseline = 'top';
+    const truth = [];
+    const draw = (text, x, ln, align) => {
+      const sx = ln.mode === 'double' || ln.mode === 'wide' ? 2 : 1, sy = ln.mode === 'double' || ln.mode === 'tall' ? 2 : 1;
+      p.font = `${D}px ${font}`; const w = p.measureText(text).width * sx;
+      const x0 = align === 'center' ? (paperW - w) / 2 : align === 'right' ? paperW - pad - w : x;
+      p.save(); p.translate(x0, ln.y); p.scale(sx, sy); p.fillText(text, 0, 0); p.restore();
+      return { x0, y0: ln.y, x1: x0 + w, y1: ln.y + D * sy };
+    };
+    for (const ln of lines) {
+      truth.push({ text: ln.text, role: ln.role || '', ...draw(ln.text, pad, ln, ln.align) });
+      if (ln.right) truth.push({ text: ln.right, role: ln.role ? ln.role + '-value' : '', ...draw(ln.right, 0, ln, 'right') });
+    }
+    // rasterize to dots
+    const dots = p.getImageData(0, 0, paperW, paperH).data, k = spec.bodyPx / D;
+    const out = document.createElement('canvas'); out.width = Math.round(paperW * k); out.height = Math.round(paperH * k);
+    const o = out.getContext('2d'); o.fillStyle = spec.paperColor || '#f4f3ee'; o.fillRect(0, 0, out.width, out.height);
+    let seed = 777; const rnd = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
+    const ink = spec.inkGray ?? 40, r = k * (spec.dotRadius ?? 0.46);
+    for (let yy = 0; yy < paperH; yy++) for (let xx = 0; xx < paperW; xx++) {
+      if (dots[(yy * paperW + xx) * 4] >= 128) continue;
+      const gv = Math.min(220, ink + rnd() * (spec.inkJitter ?? 50));
+      o.fillStyle = `rgb(${gv},${gv},${gv})`; o.beginPath(); o.arc((xx + 0.5) * k, (yy + 0.5) * k, r, 0, Math.PI * 2); o.fill();
+    }
+    return { paper: out, paperW: out.width, paperH: out.height, truthLines: truth.map(t => ({ ...t, x0: t.x0 * k, y0: t.y0 * k, x1: t.x1 * k, y1: t.y1 * k })) };
+  }
+
   function makeReceipt(spec) {
     const v = spec.content;
+    if (spec.thermal) return placeOnFrame(spec, v, thermalPaper(spec, v));
     const font = spec.font || '"BIZ UDGothic","MS Gothic","Yu Gothic",sans-serif';
     const body = spec.bodyPx; // body text glyph size in paper pixels
     const paperW = Math.round(body * (spec.cols || 24));
@@ -63,6 +101,10 @@
         truthLines.push({ text: ln.right, role: ln.role ? ln.role + '-value' : '', x0: rx, y0: ln.y, x1: rx + rw, y1: ln.y + ln.px });
       }
     }
+    return placeOnFrame(spec, v, { paper, paperW, paperH, truthLines });
+  }
+
+  function placeOnFrame(spec, v, { paper, paperW, paperH, truthLines }) {
     // Place into frame
     const W = spec.frameW, H = spec.frameH;
     const frame = document.createElement('canvas'); frame.width = W; frame.height = H;

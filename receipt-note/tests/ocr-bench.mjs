@@ -7,13 +7,14 @@ import path from 'node:path';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { startServer } from './lib/server.mjs';
-import { FIXTURES, CONTENTS } from './lib/fixtures.mjs';
+import { FIXTURES as BASE, THERMAL, CONTENTS } from './lib/fixtures.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const args = Object.fromEntries(process.argv.slice(2).reduce((a, v, i, arr) => (v.startsWith('--') ? [...a, [v.slice(2), arr[i + 1]?.startsWith('--') || arr[i + 1] === undefined ? true : arr[i + 1]]] : a), []));
 const browserType = args.browser === 'webkit' ? webkit : chromium;
 const only = args.only ? String(args.only).split(',') : null;
 const appPage = args.app || 'index.html';
+const FIXTURES = args.set === 'thermal' ? THERMAL : args.set === 'all' ? [...BASE, ...THERMAL] : BASE;
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'receipt-bench-'));
 
 const norm = s => String(s || '').normalize('NFKC').replace(/\s+/g, '').replace(/[，]/g, ',');
@@ -102,7 +103,7 @@ for (const fx of FIXTURES) {
     if (bestScore <= 0.25) textOk++;
   }
   dy.sort((a, b) => a - b);
-  const r = { id: fx.id, ms, form, field, lineRecall: +lineRecall.toFixed(3), overlay: { count: dom.boxes.length, placedRatio: dom.boxes.length ? +(placed / dom.boxes.length).toFixed(3) : 0, textOkRatio: dom.boxes.length ? +(textOk / dom.boxes.length).toFixed(3) : 0, medianDyPerLine: dy.length ? +dy[Math.floor(dy.length / 2)].toFixed(2) : null }, status: dom.status };
+  const r = { id: fx.id, ms, form, field, raw: dom.raw, lineRecall: +lineRecall.toFixed(3), overlay: { count: dom.boxes.length, placedRatio: dom.boxes.length ? +(placed / dom.boxes.length).toFixed(3) : 0, textOkRatio: dom.boxes.length ? +(textOk / dom.boxes.length).toFixed(3) : 0, medianDyPerLine: dy.length ? +dy[Math.floor(dy.length / 2)].toFixed(2) : null }, status: dom.status };
   results.push(r);
   console.log(`${fx.id.padEnd(18)} ${String(ms).padStart(6)}ms date:${field.date ? 'OK' : '--'} store:${field.store ? 'OK' : '--'} amount:${field.amount ? 'OK' : field.amountWrong ? 'WRONG' : '--'} rate:${field.rate ? 'OK' : '--'} lines:${(lineRecall * 100).toFixed(0)}% overlay:${r.overlay.count} placed:${(r.overlay.placedRatio * 100).toFixed(0)}% | ${form ? JSON.stringify({ d: form.date, s: form.store, a: form.amount, r: form.rate }) : 'no-form'}`);
 }

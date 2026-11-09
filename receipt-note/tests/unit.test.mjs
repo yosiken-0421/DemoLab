@@ -84,12 +84,55 @@ test('combinePasses: verified total wins; conflicting unverified totals stay bla
   assert.deepEqual(plain(conflict.amountCandidates.map(c => c.value).sort()), [1053, 1058]);
 });
 
-test('combinePasses: arithmetic consensus vetoes an unverified, different total (regression: 937 vs 2,937)', () => {
+test('combinePasses: cash paid agreeing with subtotal/tax targets overrides a misread total (regression: 937 vs 2,937)', () => {
   const p = t => ({ parsed: O.parsePass(t, { today: TODAY }) });
   const r = O.combinePasses([p('小計 ¥2,937\n(10%対象 ¥2,689)\n(8%対象 ¥248)\nお預り ¥3,000\nお釣り ¥63'), p('合計 ¥937\nお預り ¥3,000\nお釣り ¥63')]);
-  assert.equal(r.amount, null);
-  assert.equal(r.status.amount, 'conflict');
-  assert.ok(r.amountCandidates.some(c => c.value === 2937 && c.derived));
+  assert.equal(r.amount, 2937);
+  assert.equal(r.status.amount, 'verified');
+  assert.ok(r.amountCandidates[0].why.includes('お預り−お釣り'));
+});
+
+test('combinePasses: arithmetic without cash paid does not auto-fill, and a backed total is not overridden', () => {
+  const p = t => ({ parsed: O.parsePass(t, { today: TODAY }) });
+  const noCash = O.combinePasses([p('小計 ¥2,937\n(10%対象 ¥2,689)\n(8%対象 ¥248)'), p('合計 ¥937')]);
+  assert.equal(noCash.amount, null);
+  assert.equal(noCash.status.amount, 'conflict');
+  // discount after subtotal: cash paid 900 = total 900 (backed), subtotal 1,000 differs -> 900
+  const disc = O.combinePasses([p('小計 ¥1,000\n値引 -¥100\n合計 ¥900\nお預り ¥1,000\nお釣り ¥100')]);
+  assert.equal(disc.amount, 900);
+});
+
+test('parsePass: large-print amount without a readable label counts only with arithmetic evidence', () => {
+  const lines = [{ text: '小計 ¥2,937', h: 20 }, { text: '生計 ¥2,937', h: 44, big: true }, { text: 'お預り ¥3,000', h: 20 }, { text: 'お釣り ¥63', h: 20 }];
+  const r = O.combinePasses([{ parsed: O.parsePass(lines, { today: TODAY }) }]);
+  assert.equal(r.amount, 2937);
+  const lone = O.combinePasses([{ parsed: O.parsePass([{ text: 'XY ¥5,555', h: 44, big: true }], { today: TODAY }) }]);
+  assert.equal(lone.amount, null);
+});
+
+test('estimateLineHeight: finds the character height of printed rows', () => {
+  const w = 200, h = 300, g = new Float32Array(w * h).fill(240);
+  for (let row = 0; row < 10; row++) for (let y = 20 + row * 25; y < 20 + row * 25 + 12; y++) for (let x = 20; x < 180; x++) if ((x >> 2) % 2) g[y * w + x] = 30;
+  const r = O.estimateLineHeight(g, w, h, null, 0);
+  assert.ok(r && Math.abs(r.h - 12) <= 1, JSON.stringify(r));
+  assert.equal(O.estimateLineHeight(new Float32Array(w * h).fill(200), w, h, null, 0), null);
+});
+
+test('groupRows + pickKeyRows: label/price segments form one row; total, date, large rows are selected', () => {
+  const B = (text, cx, cy, h = 20, w = 80) => ({ text, cx, cy, w, h });
+  const rows = O.groupRows([B('ひかり薬局', 200, 30, 44, 200), B('2026-08-07 09:41', 120, 90), B('マスク', 60, 130), B('¥698', 330, 131), B('目薬', 60, 160), B('¥1,078', 330, 160),
+    B('小計', 60, 200), B('¥2,937', 330, 201), B('生計', 60, 250, 44), B('¥2,937', 330, 250, 44), B('お預り', 60, 300), B('¥3,000', 330, 300), B('ありがとう', 200, 340)], 0);
+  assert.equal(rows.length, 8);
+  assert.equal(rows[2].segs.length, 2);
+  const keys = O.pickKeyRows(rows).map(r => r.text);
+  for (const t of ['ひかり薬局', '2026-08-07 09:41', '小計 ¥2,937', '生計 ¥2,937', 'お預り ¥3,000']) assert.ok(keys.includes(t), t + ' in ' + keys);
+  assert.ok(!keys.includes('目薬 ¥1,078'));
+});
+
+test('planDetail: large print is reduced toward the target character height', () => {
+  const lines = Array.from({ length: 8 }, (_, i) => ({ text: '合計 ¥1,000', conf: 90, bbox: { x0: 100, y0: 100 + i * 150, x1: 900, y1: 196 + i * 150 }, slope: 0 }));
+  const plan = O.planDetail(lines, { cx: 1500, cy: 2000, angle: 0, scale: 1, cw: 3000, ch: 4000 }, { width: 3000, height: 4000 }, O.DEFAULTS, null);
+  assert.ok(plan.scale < 0.5 && plan.scale >= O.DEFAULTS.minScale, String(plan.scale));
 });
 
 test('combinePasses: date conflict is left blank', () => {
@@ -199,4 +242,20 @@ test('Excel: 13 sheets (annual + 12 months), month grouping, totals and custom o
   assert.ok(files['xl/worksheets/sheet13.xml'].includes('店C'));
   assert.ok(!Object.values(files).some(x => x.includes('昨年')), 'other years excluded');
   assert.match(files['xl/worksheets/sheet1.xml'], /<f>SUM\(B6:B17\)<\/f><v>1750<\/v>/);
+});
+
+test('combinePasses: on a mixed-rate receipt one rate target alone is not evidence for the total', () => {
+  const p = t => ({ parsed: O.parsePass(t, { today: TODAY }) });
+  const r = O.combinePasses([p('お茶 ¥140\n小計 ¥1,053\n10%対象 ¥913\n8%対象 ¥140\nお預り ¥2,000\nお釣り ¥947'), p('合計 ¥140\n8%対象 ¥140')]);
+  assert.equal(r.amount, 1053);
+  assert.ok(!r.amountCandidates.find(c => c.value === 140)?.why.length);
+});
+
+test('combinePasses: tax figures confirm the rate when the rate label is misread', () => {
+  const p = t => ({ parsed: O.parsePass(t, { today: TODAY }) });
+  // "10%対象" read as "0% 対象"; 内消費税 83 = floor(913×10/110), 10 = floor(140×8/108)
+  const r = O.combinePasses([p('0% 対象 ¥913\n内消費税等 ¥83\n8対象 ¥140\n内消費税等 ¥10\n合計 ¥1,053\nお預り ¥2,000\nお釣り ¥947')]);
+  assert.equal(r.rate, 'mixed');
+  const only10 = O.combinePasses([p('合計 ¥1,100\n内消費税 ¥100')]);
+  assert.equal(only10.rate, '10');
 });

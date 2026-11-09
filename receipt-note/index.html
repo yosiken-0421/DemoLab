@@ -213,10 +213,12 @@ const CJK_SPACE=new RegExp('(['+CJK+'])[ \\t]+(?=['+CJK+'])','g');
 function normalizeLine(s){
  let t=String(s??'').normalize('NFKC').replace(/[\t　]/g,' ');
  t=t.replace(CJK_SPACE,'$1');                       // Tesseract jpn often emits "合 計" / "お 預 り"
+ t=t.replace(/^\s*[|｜]+\s*|\s*[|｜]+\s*$/g,'');       // paper edge / ruled border read as a bar
  t=t.replace(/\\(?=\s*[\dOoIl|])/g,'¥');             // "¥" read as backslash
- t=t.replace(/(^|[\s(（])[%#](?=\s?\d)/g,'$1¥');           // "¥" read as "%" or "#" in front of a price
+ t=t.replace(/(^|[\s(（])[%#*](?=\s?\d)/g,'$1¥');          // "¥" read as "%", "#" or "*" in front of a price
  t=t.replace(/¥\s+(?=[\dOoIl|])/g,'¥');
  t=t.replace(/(\d)\s*[,，]\s*(?=\d{3}(?!\d))/g,'$1,'); // "1, 053" -> "1,053"
+ t=t.replace(/¥\d{1,3}(?:[.\s]\d{3})+(?![\d.,])/g,m=>m.replace(/[.\s]/g,',')); // "¥4.006" / "¥4 006": separator misread
  t=t.replace(/¥[\dOoIl|,]+/g,m=>'¥'+m.slice(1).replace(/[Oo]/g,'0').replace(/[Il|]/g,'1'));
  return t.replace(/\s+/g,' ').trim();
 }
@@ -272,12 +274,13 @@ function storeScore(line){
 // Parse one OCR pass. `lines` may be plain strings or {text,h} (h = line height, used to prefer the large store name).
 function parsePass(input,{today}={}){
  const raw=Array.isArray(input)?input:String(input||'').split('\n');
- const lines=raw.map(l=>typeof l==='string'?{text:normalizeLine(l),h:0}:{text:normalizeLine(l.text),h:Number(l.h)||0}).filter(l=>l.text);
- const r={dates:[],totals:[],subtotals:[],deposits:[],changes:[],t10:[],t8:[],taxes:[],taxTotals:[],store:'',has10:false,has8:false};
+ const lines=raw.map(l=>typeof l==='string'?{text:normalizeLine(l),h:0}:{text:normalizeLine(l.text),h:Number(l.h)||0,big:!!l.big}).filter(l=>l.text);
+ const r={bigTotals:[],dates:[],totals:[],subtotals:[],deposits:[],changes:[],t10:[],t8:[],taxes:[],taxTotals:[],store:'',has10:false,has8:false};
  lines.forEach(({text},i)=>{
   const d=parseDate(text,today);if(d)r.dates.push(d);
   const next=lines[i+1]?.text||'',nextOnlyMoney=/^[¥\d,円\s()]+$/.test(next)?moneyValues(next).map(v=>v.value).pop()??null:null;
   if(RX.total.test(text)&&!RX.notTotal.test(text)){const v=firstValueAfter(text,RX.total)??nextOnlyMoney;if(v!==null)r.totals.push(v)}
+  else if(lines[i].big&&!RX.notTotal.test(text)&&!RX.subtotal.test(text)){const vs=moneyValues(text);if(vs.length)r.bigTotals.push(vs[vs.length-1].value)} // large-print (倍角) amount whose label was not read
   if(RX.subtotal.test(text)){const v=firstValueAfter(text,RX.subtotal)??nextOnlyMoney;if(v!==null)r.subtotals.push(v)}
   if(RX.deposit.test(text)&&!RX.change.test(text)){const v=firstValueAfter(text,RX.deposit)??nextOnlyMoney;if(v!==null)r.deposits.push(v)}
   if(RX.change.test(text)){const v=firstValueAfter(text,RX.change)??nextOnlyMoney;if(v!==null)r.changes.push(v)}
@@ -289,42 +292,68 @@ function parsePass(input,{today}={}){
   else if(RX.tax.test(text)){const v=firstValueAfter(text,RX.tax);if(v!==null)r.taxes.push(v)}
  });
  const head=lines.slice(0,8).map((l,i)=>({...l,i,score:storeScore(l.text)})).filter(l=>l.score>0);
- if(head.length){const maxH=Math.max(...head.map(l=>l.h));const pick=maxH>0?head.reduce((a,b)=>b.h>a.h*1.15?b:a):head[0];r.store=pick.text}
+ if(head.length){const maxH=Math.max(...head.map(l=>l.h));const pick=maxH>0?head.reduce((a,b)=>b.h>a.h*1.15?b:a):head[0];r.store=pick.text.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N})）]+$/gu,'')}
  return r;
 }
 function tally(values){const m=new Map();for(const{v,w}of values)if(v!==null&&v!==''&&v!==undefined)m.set(v,(m.get(v)||0)+w);return [...m.entries()].map(([value,support])=>({value,support})).sort((a,b)=>b.support-a.support)}
 // Combine several OCR passes over the SAME photo. Totals are cross-checked with deposit-change, subtotal and tax-rate targets.
 function combinePasses(passes){
- const P=passes.map(p=>({w:p.weight||1,r:p.parsed}));
+ const P=passes.map(p=>({w:p.weight||1,r:p.parsed,storeBonus:p.storeBonus||0}));
  const any=k=>P.flatMap(p=>p.r[k]);
- const totals=tally(P.flatMap(p=>[...new Set(p.r.totals)].map(v=>({v,w:p.w})))),deps=new Set(any('deposits')),chg=new Set(any('changes')),subs=new Set(any('subtotals'));
+ const totalsRaw=P.flatMap(p=>[...new Set(p.r.totals)].map(v=>({v,w:p.w}))),deps=new Set(any('deposits')),chg=new Set(any('changes')),subs=new Set(any('subtotals'));
  const t10=new Set(any('t10')),t8=new Set(any('t8'));
+ // A receipt with both 10% and 8% items: only 10%対象+8%対象 equals the total (one part alone is not evidence).
+ const both=P.some(p=>p.r.has10)&&P.some(p=>p.r.has8);
+ const rateSums=()=>{const out=new Set();if(t10.size&&t8.size){for(const a of t10)for(const b of t8)out.add(a+b)}else if(!both)for(const v of [...t10,...t8])out.add(v);return out};
  const evidence=v=>{const why=[];
   if([...deps].some(d=>chg.has(d-v)&&d>=v))why.push('お預り−お釣り');
   if(subs.has(v))why.push('小計');
-  const sums=new Set([...t10,...t8]);for(const a of t10)for(const b of t8)sums.add(a+b);
+  const sums=rateSums();
   if(sums.has(v))why.push('税率別対象額');
   return why};
- const cands=totals.map(c=>{const why=evidence(c.value);return {...c,why,score:c.support+why.length*1.5}}).filter(c=>c.value>=10||c.why.length).sort((a,b)=>b.score-a.score);
+ for(const p of P)for(const v of new Set(p.r.bigTotals||[]))if(evidence(v).length)totalsRaw.push({v,w:p.w});
+ const totals=tally(totalsRaw);
+ const cands=totals.map(c=>{const why=evidence(c.value);return {...c,why,score:c.support+why.length*1.5}}).filter(c=>c.value>=10).sort((a,b)=>b.score-a.score);
  // Values on which at least two independent read figures agree (subtotal, deposit−change, tax-rate targets).
  // They are offered for one-tap selection and veto an unverified total, but are never auto-filled themselves.
  const arith=new Map();const addA=(v,src)=>{if(v>0){const s=arith.get(v)||new Set();s.add(src);arith.set(v,s)}};
  for(const d of deps)for(const c of chg)if(d>c)addA(d-c,'お預り−お釣り');
  for(const v of subs)addA(v,'小計');
- {const sums=new Set([...t10,...t8]);for(const a of t10)for(const b of t8)sums.add(a+b);for(const v of sums)addA(v,'税率別対象額')}
+ for(const v of rateSums())addA(v,'税率別対象額');
  const consensus=[...arith.entries()].filter(([,s])=>s.size>=2).map(([value,s])=>({value,why:[...s]}));
  for(const c of consensus)if(!cands.some(x=>x.value===c.value))cands.push({value:c.value,support:0,why:c.why,score:0,derived:true});
  let amount=null,amountStatus='missing';
  const real=cands.filter(c=>!c.derived);
+ // Cash paid (お預り−お釣り) agreeing with another independent figure is the amount actually paid: use it when
+ // no total with its own evidence says otherwise (the 合計 line itself is often the hardest to read: large print).
+ const strong=consensus.filter(c=>c.value>=10&&c.why.includes('お預り−お釣り')).sort((a,b)=>b.why.length-a.why.length);
+ const backed=real.filter(c=>c.why.length);
+ if(strong.length===1&&!backed.some(c=>c.value!==strong[0].value&&c.why.length>=strong[0].why.length)){
+  amount=strong[0].value;amountStatus='verified';
+  const c=cands.find(x=>x.value===amount);if(c){c.why=[...new Set([...c.why,...strong[0].why])];c.derived=false}
+  cands.sort((a,b)=>(b.value===amount)-(a.value===amount)||b.score-a.score);
+ }
+ else
  if(real.length===1&&!real[0].why.length&&consensus.some(c=>c.value!==real[0].value))amountStatus='conflict';
  else if(real.length===1){amount=real[0].value;amountStatus=real[0].why.length?'verified':'single'}
  else if(real.length>1){const[a,b]=real;if(!a.why.length&&consensus.some(c=>c.value!==a.value))amountStatus='conflict';else if((a.why.length&&!b.why.length&&a.score>=b.score)||a.score>=b.score+2){amount=a.value;amountStatus=a.why.length?'verified':'majority'}else amountStatus='conflict'}
  const dates=tally(P.flatMap(p=>[...new Set(p.r.dates)].slice(0,1).map(v=>({v,w:p.w}))));
  let date='',dateStatus='missing';
  if(dates.length===1){date=dates[0].value;dateStatus='ok'}else if(dates.length>1){if(dates[0].support>=dates[1].support+1){date=dates[0].value;dateStatus='majority'}else dateStatus='conflict'}
- const stores=tally(P.map(p=>({v:p.r.store,w:p.w+(p.storeBonus||0)})));
- const store=stores[0]?.value||'';
- const has10=P.some(p=>p.r.has10),has8=P.some(p=>p.r.has8);
+ // Store: fuzzy vote, since each pass misreads a different character; a candidate is supported by similar readings.
+ const sim=(a,b)=>{const g=t=>{const x=t.replace(/\s/g,''),m=new Map();for(let i=0;i<x.length-1;i++){const k=x.slice(i,i+2);m.set(k,(m.get(k)||0)+1)}return [m,Math.max(1,x.length-1)]};
+  if(a===b)return 1;const[A,na]=g(a),[B,nb]=g(b);let o=0;for(const[k,v]of A)o+=Math.min(v,B.get(k)||0);return 2*o/(na+nb)};
+ const sc=P.filter(p=>p.r.store).map(p=>({v:p.r.store,bonus:p.storeBonus,score:P.reduce((a,q)=>a+(q.r.store?q.w*sim(p.r.store,q.r.store):0),0)}));
+ sc.sort((a,b)=>b.score-a.score||b.bonus-a.bonus);
+ const stores=[...new Set(sc.map(x=>x.v))].map(value=>({value}));
+ const store=sc[0]?.v||'';
+ let has10=P.some(p=>p.r.has10),has8=P.some(p=>p.r.has8);
+ // Rate labels are short and often misread ("0% 対象", "(108 対象"). The tax figures confirm a rate on their own:
+ // 内消費税 T of a taxable amount V is floor/round of V×10/110 (10%) or V×8/108 (8%).
+ {const taxes=new Set([...any('taxes'),...any('taxTotals')].filter(t=>t>=5)),bases=new Set([...t10,...t8].filter(v=>v>=100));
+  if(amount!==null){bases.add(amount);for(const v of [...t10,...t8])if(amount-v>=100)bases.add(amount-v)}
+  const fits=(v,t,r)=>{const x=v*r/(100+r);return t===Math.floor(x)||t===Math.round(x)||t===Math.ceil(x)};
+  for(const v of bases)for(const t of taxes){if(fits(v,t,10))has10=true;if(fits(v,t,8))has8=true}}
  const rate=has10&&has8?'mixed':has10?'10':has8?'8':'';
  const taxVotes=tally(P.map(p=>{const tt=p.r.taxTotals[0];const parts=[...new Set(p.r.taxes)];return {v:tt??(parts.length?parts.reduce((a,b)=>a+b,0):null),w:p.w}}));
  let taxAmount='';if(taxVotes.length===1||(taxVotes.length>1&&taxVotes[0].support>=taxVotes[1].support+1))taxAmount=taxVotes[0].value;
@@ -403,7 +432,46 @@ function estimateSkew(gray,w,h,roi){
  let fine=best;for(let a=best-1;a<=best+1;a+=.25){const s=score(a*deg);if(s>bestS){bestS=s;fine=a}}
  return Math.abs(fine)<.5?0:fine*deg;
 }
-function planDetail(lines,region,src,cfg,paper){
+// Typical printed character height (grid px) from the image itself: dark-pixel row profile along the text
+// direction, split into bands at empty rows. Returns {h,count} or null when no clear rows are found.
+function estimateLineHeight(gray,w,h,roi,angle=0){
+ const r=roi||{x0:0,y0:0,x1:w,y1:h},X0=Math.max(0,r.x0|0),X1=Math.min(w,Math.ceil(r.x1)),Y0=Math.max(0,r.y0|0),Y1=Math.min(h,Math.ceil(r.y1));
+ if(X1-X0<20||Y1-Y0<20)return null;
+ const hist=new Array(256).fill(0);let n=0;
+ for(let y=Y0;y<Y1;y++)for(let x=X0;x<X1;x++){hist[Math.max(0,Math.min(255,gray[y*w+x]|0))]++;n++}
+ let sum=0;for(let i=0;i<256;i++)sum+=i*hist[i];let sb=0,wb=0,best=0,th=128;
+ for(let i=0;i<256;i++){wb+=hist[i];if(!wb)continue;const wf=n-wb;if(!wf)break;sb+=i*hist[i];const mb=sb/wb,mf=(sum-sb)/wf,b=wb*wf*(mb-mf)*(mb-mf);if(b>best){best=b;th=i}}
+ const s=Math.sin(angle),c=Math.cos(angle),off=Math.ceil(Math.hypot(w,h)),prof=new Float32Array(2*off+2);
+ for(let y=Y0;y<Y1;y++)for(let x=X0;x<X1;x++)if(gray[y*w+x]<=th)prof[Math.round(-x*s+y*c)+off]++;
+ let mx=0;for(const v of prof)if(v>mx)mx=v;if(!mx)return null;
+ const on=mx*.04,bands=[];let start=-1;
+ for(let i=0;i<prof.length;i++){if(prof[i]>on){if(start<0)start=i}else if(start>=0){bands.push(i-start);start=-1}}
+ const good=bands.filter(b=>b>=2&&b<(Y1-Y0)*.3);
+ if(good.length<4)return null;
+ return {h:median(good),count:good.length};
+}
+// Group overlay boxes (source px, may be rotated by `angle`) into visual rows of the receipt.
+function groupRows(boxes,angle=0){
+ const c=Math.cos(angle),s=Math.sin(angle),items=boxes.filter(b=>b.text&&b.w>0&&b.h>0).map(b=>({b,x:b.cx*c+b.cy*s,y:-b.cx*s+b.cy*c})).sort((a,b)=>a.y-b.y);
+ const rows=[];
+ for(const it of items){const row=rows.find(r=>Math.abs(r.y-it.y)<Math.min(r.h,it.b.h)*.55);if(row){row.items.push(it);row.y=(row.y*(row.items.length-1)+it.y)/row.items.length;row.h=Math.max(row.h,it.b.h)}else rows.push({y:it.y,h:it.b.h,items:[it]})}
+ return rows.sort((a,b)=>a.y-b.y).map(r=>{const segs=r.items.sort((a,b)=>a.x-b.x).map(i=>({text:i.b.text,x0:i.x-i.b.w/2,x1:i.x+i.b.w/2,h:i.b.h}));
+  return {y:r.y,h:r.h,x0:Math.min(...segs.map(q=>q.x0)),x1:Math.max(...segs.map(q=>q.x1)),segs,text:segs.map(q=>q.text).join(' '),angle}});
+}
+// Rows worth re-reading for the expense sheet: date, store name, total/subtotal/cash/change, tax lines, large print.
+const KEY_LABEL=/(?:計|預|釣|対象|課税|税|現金|支払|請求|会計|TOTAL|[年月日]|[\/\-.]\d{1,2}[\/\-.]|令和|R\d)/i;
+function pickKeyRows(rows,max=16){
+ if(!rows.length)return [];
+ const mh=median(rows.map(r=>r.h)),out=[];
+ rows.forEach((r,i)=>{
+  const big=r.h>=mh*1.35,label=KEY_LABEL.test(r.text)||(rows[i].extra||[]).some(t=>KEY_LABEL.test(t)),head=i<3;
+  let score=(label?2:0)+(big?2:0)+(head?1:0);
+  if(/\d/.test(r.text))score+=.5;
+  if(score>=1.5||(head&&big))out.push({...r,index:i,big,score});
+ });
+ return out.sort((a,b)=>b.score-a.score||a.index-b.index).slice(0,max).sort((a,b)=>a.index-b.index);
+}
+function planDetail(lines,region,src,cfg,paper,lhEstimate=null){
  const good=lines.filter(l=>l.conf>=cfg.minLayoutConf&&l.text.replace(/\s/g,'').length>=2);
  const C0={x:src.width/2,y:src.height/2};
  const rotQ=(px,py,a)=>{const dx=px-C0.x,dy=py-C0.y,c=Math.cos(-a),s=Math.sin(-a);return {x:dx*c-dy*s,y:dx*s+dy*c}};
@@ -411,8 +479,11 @@ function planDetail(lines,region,src,cfg,paper){
   let rect={angle:region.angle,x0:-src.width/2,y0:-src.height/2,x1:src.width/2,y1:src.height/2},kind='whole';
   if(paper){const q=[[paper.x0,paper.y0],[paper.x1,paper.y0],[paper.x0,paper.y1],[paper.x1,paper.y1]].map(([x,y])=>rotQ(x,y,region.angle)),m=Math.max(paper.x1-paper.x0,paper.y1-paper.y0)*.04;
    rect={angle:region.angle,x0:Math.min(...q.map(p=>p.x))-m,x1:Math.max(...q.map(p=>p.x))+m,y0:Math.min(...q.map(p=>p.y))-m,y1:Math.max(...q.map(p=>p.y))+m};kind='paper'}
-  const area=(rect.x1-rect.x0)*(rect.y1-rect.y0),s=Math.min(cfg.maxScale,cfg.fallbackScale,Math.sqrt(cfg.tileBudget*cfg.maxTiles/area));
-  return tilePlan(rect,Math.max(1,s),src.width/40,C0,cfg,kind);
+  const area=(rect.x1-rect.x0)*(rect.y1-rect.y0),budget=Math.sqrt(cfg.tileBudget*cfg.maxTiles/area);
+  // With a character height measured from the image, scale to the target size (down for large dot-matrix
+  // print, whose dots otherwise separate; up for small print). Without it, keep the old moderate upscale.
+  const s=lhEstimate?Math.max(cfg.minScale,Math.min(cfg.maxScale,cfg.targetLineHeight/lhEstimate,budget)):Math.max(1,Math.min(cfg.maxScale,cfg.fallbackScale,budget));
+  return tilePlan(rect,s,lhEstimate||src.width/40,C0,cfg,kind,lhEstimate);
  }
  const slopes=good.map(l=>l.slope).filter(v=>v!==null);let angle=(median(slopes)||0)+region.angle;
  if(Math.abs(angle)<cfg.minDeskewRad)angle=0;angle=Math.max(-.35,Math.min(.35,angle));
@@ -426,7 +497,7 @@ function planDetail(lines,region,src,cfg,paper){
  const mx=Math.max(lh*4,src.width*.06),my=Math.max(lh*4,src.height*.04);
  const lim=Math.hypot(src.width,src.height)/2;
  const rect={angle,x0:Math.max(-lim,x0-mx),x1:Math.min(lim,x1+mx),y0:Math.max(-lim,y0-my),y1:Math.min(lim,y1+my)};
- let scale=Math.max(1,Math.min(cfg.maxScale,cfg.targetLineHeight/Math.max(1,lh)));
+ let scale=Math.max(cfg.minScale,Math.min(cfg.maxScale,cfg.targetLineHeight/Math.max(1,lh)));
  const area=(rect.x1-rect.x0)*(rect.y1-rect.y0);
  if(area*scale*scale>cfg.tileBudget*cfg.maxTiles)scale=Math.max(Math.min(1,scale),Math.sqrt(cfg.tileBudget*cfg.maxTiles/area));
  return tilePlan(rect,scale,lh,C0,cfg,'text',lh);
@@ -441,8 +512,9 @@ function tilePlan(rect,scale,lh,C0,cfg,kind,lineHeight=null){
  }
  return {kind,angle:rect.angle,scale,lineHeight,tiles};
 }
-const DEFAULTS={layoutMax:2400,targetLineHeight:38,maxScale:3,fallbackScale:2,tileBudget:5.5e6,maxTiles:3,minLayoutConf:25,minDeskewRad:.012,detailPsm:4,normalize:true};
-global.ReceiptOCR={normalizeLine,splitLines,moneyValues,parseDate,parsePass,combinePasses,extractReceipt,mapPoint,mapBox,containRect,linesFromData,planDetail,paperRect,estimateSkew,DEFAULTS};
+const DEFAULTS={layoutMax:2400,layoutLineHeight:34,targetLineHeight:38,minScale:.3,maxScale:3,fallbackScale:2,tileBudget:5.5e6,maxTiles:3,minLayoutConf:25,minDeskewRad:.012,detailPsm:4,normalize:true,rowHeight:40,maxKeyRows:16,rowReread:true};
+const NUMERIC_CHARS='0123456789¥\\,.-/:()%|年月日';
+global.ReceiptOCR={normalizeLine,splitLines,moneyValues,parseDate,parsePass,combinePasses,extractReceipt,mapPoint,mapBox,containRect,linesFromData,planDetail,paperRect,estimateSkew,estimateLineHeight,groupRows,pickKeyRows,NUMERIC_CHARS,DEFAULTS};
 })(typeof window!=='undefined'?window:globalThis);
 </script>
 <script>
@@ -539,6 +611,21 @@ function makeView(source,{cx,cy,cropW,cropH,angle=0,scale=1}){
  ctx.translate(c.width/2,c.height/2);ctx.scale(scale,scale);ctx.rotate(-angle);ctx.translate(-cx,-cy);ctx.drawImage(source,0,0);
  return {canvas:c,region:{cx,cy,angle,scale,cw:c.width,ch:c.height}};
 }
+// Halved copies of the source. Large reductions are taken from a smaller copy so every output pixel averages
+// its neighbours: separate thermal-printer dots merge into solid strokes instead of being sampled as noise.
+function makePyramid(source){
+ const levels=[{c:source,k:1}];let c=source,k=1;
+ while(Math.max(c.width,c.height)>600){const n=document.createElement('canvas');n.width=Math.max(1,Math.round(c.width/2));n.height=Math.max(1,Math.round(c.height/2));
+  const x=n.getContext('2d',{alpha:false});x.imageSmoothingEnabled=true;x.imageSmoothingQuality='high';x.drawImage(c,0,0,n.width,n.height);k*=n.width/c.width;c=n;levels.push({c,k})}
+ return levels;
+}
+function makeViewP(levels,{cx,cy,cropW,cropH,angle=0,scale=1}){
+ let lv=levels[0];for(const l of levels)if(scale/l.k<=1.5)lv=l; // smallest copy that still needs at most 1.5x enlargement
+ const v=makeView(lv.c,{cx:cx*lv.k,cy:cy*lv.k,cropW:cropW*lv.k,cropH:cropH*lv.k,angle,scale:scale/lv.k});
+ v.region={cx,cy,angle,scale:v.canvas.width/cropW,cw:v.canvas.width,ch:v.canvas.height};
+ return v;
+}
+function stretchX(canvas,f){const c=document.createElement('canvas');c.width=Math.max(1,Math.round(canvas.width*f));c.height=canvas.height;const x=c.getContext('2d',{alpha:false});x.imageSmoothingEnabled=true;x.imageSmoothingQuality='high';x.drawImage(canvas,0,0,c.width,c.height);return c}
 // Flatten uneven lighting (shadows, dark rooms, faded thermal print): divide by a coarse paper-brightness map,
 // then stretch contrast. Output is grayscale; no hard binarization (Tesseract's LSTM works better on gray).
 function normalizeIllumination(canvas){
@@ -576,14 +663,16 @@ function grayGrid(source,longSide){
 }
 // Paper rectangle (source px) and text skew (radians), both from small downscaled copies: fast and memory-light.
 function analyzeImage(source){
- let paper=null,skew=0;
+ let paper=null,skew=0,lineHeight=null;
  try{
   const g=grayGrid(source,96),r=ReceiptOCR.paperRect(g.gray,g.w,g.h);
   if(r)paper={x0:r.x0*g.toSource,y0:r.y0*g.toSource,x1:r.x1*g.toSource,y1:r.y1*g.toSource};
-  const s=grayGrid(source,640),k=1/s.toSource;
-  skew=ReceiptOCR.estimateSkew(s.gray,s.w,s.h,paper?{x0:paper.x0*k,y0:paper.y0*k,x1:paper.x1*k,y1:paper.y1*k}:null);
+  const s=grayGrid(source,640),k=1/s.toSource,roi=paper?{x0:paper.x0*k,y0:paper.y0*k,x1:paper.x1*k,y1:paper.y1*k}:null;
+  skew=ReceiptOCR.estimateSkew(s.gray,s.w,s.h,roi);
+  const lh=ReceiptOCR.estimateLineHeight(s.gray,s.w,s.h,roi,skew);
+  if(lh&&lh.h>=4)lineHeight=lh.h*s.toSource; // below ~4 grid px the estimate is not reliable
  }catch(e){console.warn('image analysis skipped',e)}
- return {paper,skew};
+ return {paper,skew,lineHeight};
 }
 // Turn one Tesseract result into overlay boxes (source-image coordinates) and visual text rows for parsing.
 function readPass(data,region,label,keep){
@@ -689,6 +778,66 @@ async function runPass(ocr,canvas,label,psm){
  const t=performance.now(),result=await ocr.recognize(canvas,{},{text:true,blocks:true,hocr:false,tsv:false});
  return {data:result.data||{},ms:Math.round(performance.now()-t)};
 }
+// The layout box of a row can be cut short or span neighbours. Find the band of ink at the middle of a taller
+// crop, keep only that text row (with a margin) and scale it to the target character height.
+function snapToInkRow(canvas,target){
+ const w=canvas.width,h=canvas.height,d=canvas.getContext('2d',{willReadFrequently:true}).getImageData(0,0,w,h).data,prof=new Float32Array(h);
+ for(let y=0;y<h;y++){let n=0;for(let x=0;x<w;x++)if(d[(y*w+x)*4]<150)n++;prof[y]=n}
+ let mx=0;for(const v of prof)if(v>mx)mx=v;if(mx<3)return canvas;
+ const bands=[];let st=-1,gap=0;
+ for(let y=0;y<=h;y++){const on=y<h&&prof[y]>Math.max(2,mx*.03);if(on){if(st<0)st=y;gap=0}else if(st>=0){if(++gap>2||y===h){bands.push({y0:st,y1:y-gap+1});st=-1;gap=0}}}
+ const mid=h/2,pick=bands.filter(b=>b.y1-b.y0>=target*.3).map(b=>{let ink=0;for(let y=b.y0;y<b.y1;y++)ink+=prof[y];const dist=mid<b.y0?b.y0-mid:mid>b.y1?mid-b.y1:0;return {...b,ink,dist}})
+  .sort((a,b)=>a.dist-b.dist||b.ink-a.ink)[0];
+ if(!pick||pick.dist>target*.6)return canvas;
+ const bh=pick.y1-pick.y0,pad=Math.max(4,bh*.35),f=Math.max(.5,Math.min(2.5,target/bh));
+ const y0=Math.max(0,pick.y0-pad),y1=Math.min(h,pick.y1+pad),o=document.createElement('canvas');
+ o.width=Math.max(1,Math.round(w*f));o.height=Math.max(1,Math.round((y1-y0)*f));
+ const x=o.getContext('2d',{alpha:false});x.imageSmoothingEnabled=true;x.imageSmoothingQuality='high';x.drawImage(canvas,0,y0,w,y1-y0,0,0,o.width,o.height);
+ return o;
+}
+async function readLine(ocr,canvas,whitelist){
+ await ocr.setParameters({tessedit_pageseg_mode:'7',tessedit_char_whitelist:whitelist});
+ const r=await ocr.recognize(canvas,{},{text:true,blocks:false,hocr:false,tsv:false});
+ return {text:String(r.data?.text||'').replace(/\s+/g,' ').trim(),conf:Number(r.data?.confidence)||0};
+}
+async function rereadKeyRows(ocr,pyr,boxes,passes,angle,cfg,log){
+ const t0=performance.now(),rows=ReceiptOCR.groupRows(boxes,angle);
+ // label texts from every pass that fall on the row, so a label read only once still selects the row
+ const c=Math.cos(angle),s=Math.sin(angle);
+ for(const p of passes)for(const b of p.boxes){const y=-b.cx*s+b.cy*c,r=rows.find(r=>Math.abs(r.y-y)<r.h*.6);if(r)(r.extra||(r.extra=[])).push(b.text)}
+ const keys=ReceiptOCR.pickKeyRows(rows,cfg.maxKeyRows);if(!keys.length)return [];
+ const X0=Math.min(...rows.map(r=>r.x0)),X1=Math.max(...rows.map(r=>r.x1));
+ const view=(r,x0,x1)=>{const h=r.h,mx=h*.3,xc=(x0+x1)/2;
+  const v=makeViewP(pyr,{cx:xc*c-r.y*s,cy:xc*s+r.y*c,cropW:x1-x0+2*mx,cropH:h*3,angle,scale:cfg.rowHeight/h});
+  if(cfg.normalize)normalizeIllumination(v.canvas);
+  const out=snapToInkRow(v.canvas,cfg.rowHeight);if(out!==v.canvas){v.canvas.width=0;v.canvas.height=0}return out};
+ const rowLines=[],numLines=[];
+ try{
+  for(const r of keys){
+   currentPassLabel='必要な項目を読み直し';$('scanStatus').textContent=`日付・金額などを読み直し中（${rowLines.length+1}/${keys.length}）…`;
+   const full=view(r,X0,X1),a=await readLine(ocr,full,'');if(window.__receiptNoteKeepCrops)window.__receiptNoteKeepCrops.push({text:a.text,url:full.toDataURL()});full.width=0;full.height=0;
+   rowLines.push({text:a.text,h:r.h,big:r.big});
+   // numbers: the part right of the label when the row has separate segments, else the whole row
+   const vx0=r.segs.length>1?Math.max(X0,r.segs[1].x0-r.h*.6):X0,base=view(r,vx0,X1);
+   const factors=[1];if(r.big)factors.push(1.9);else if(/計|TOTAL/i.test(r.text+(r.extra||[]).join(' ')))factors.push(.55);
+   let best=null;
+   for(const f of factors){const cv=f===1?base:stretchX(base,f),b=await readLine(ocr,cv,ReceiptOCR.NUMERIC_CHARS);if(cv!==base){cv.width=0;cv.height=0}
+    if(/\d/.test(b.text)&&(!best||b.conf>best.conf))best=b}
+   base.width=0;base.height=0;
+   if(best){
+    const lab=t=>String(t||'').split(/[\d¥\\]/)[0].trim(),labelA=lab(a.text),labelS=r.segs.length>1?r.segs[0].text:'';
+    const label=/計|預|釣|対象|税|支払|会計/.test(labelA)?labelA:labelS||labelA;
+    numLines.push({text:(r.segs.length>1?label+' ':'')+best.text,h:r.h,big:r.big});
+   }
+  }
+ }finally{await ocr.setParameters({tessedit_char_whitelist:''})}
+ const out=[];
+ const mk=(label,lines,w,storeBonus)=>{const p={label,confidence:0,boxes:[],rows:lines,text:lines.map(l=>l.text).join('\n'),weight:w,storeBonus};p.parsed=ReceiptOCR.parsePass(lines);return p};
+ out.push(mk('項目の再読',rowLines,1,1));
+ if(numLines.length){const p=mk('数字の再読',numLines,1.5,0);p.parsed.store='';out.push(p)}
+ log.push(`項目の再読 ${keys.length}行 ${Math.round(performance.now()-t0)}ms`);
+ return out;
+}
 async function recognizeCanvas(source,{mode='video',sharpness=null}={}){
  if(isScanning||!source)return;
  isScanning=true;$('scanNow').disabled=true;$('highResCapture').disabled=true;$('scanUsePartial').hidden=true;lastScanCandidate=null;
@@ -698,26 +847,27 @@ async function recognizeCanvas(source,{mode='video',sharpness=null}={}){
   clearOCRDisplay();freezeOCRFrame(source);drawCapturedPreview(source);
   const ocr=await loadTesseract(),cfg=OCR_CONFIG,passes=[];
   // Pass 1: whole frame (bounded size) — layout, skew and character height.
-  const k1=Math.min(1,cfg.layoutMax/Math.max(source.width,source.height));
-  const {paper,skew}=analyzeImage(source);
-  let v1=makeView(source,{cx:source.width/2,cy:source.height/2,cropW:source.width,cropH:source.height,scale:k1,angle:skew});temp.push(v1.canvas);
+  const {paper,skew,lineHeight}=analyzeImage(source),pyr=makePyramid(source);temp.push(...pyr.slice(1).map(l=>l.c));
+  // Large print is reduced to a normal character height (never below ~700px on the long side).
+  const k1=Math.min(1,cfg.layoutMax/Math.max(source.width,source.height),lineHeight?Math.max(700/Math.max(source.width,source.height),cfg.layoutLineHeight/lineHeight):1);
+  let v1=makeViewP(pyr,{cx:source.width/2,cy:source.height/2,cropW:source.width,cropH:source.height,scale:k1,angle:skew});temp.push(v1.canvas);
   let r1=await runPass(ocr,v1.canvas,'全体を確認（1回目）',3);free(v1.canvas);
   const readable=d=>ReceiptOCR.linesFromData(d).filter(l=>l.conf>=cfg.minLayoutConf&&l.text.replace(/\s/g,'').length>=2).length;
   if(skew&&readable(r1.data)<3){ // safety net: a wrong skew estimate must not cost the whole scan
-   const v0=makeView(source,{cx:source.width/2,cy:source.height/2,cropW:source.width,cropH:source.height,scale:k1});temp.push(v0.canvas);
+   const v0=makeViewP(pyr,{cx:source.width/2,cy:source.height/2,cropW:source.width,cropH:source.height,scale:k1});temp.push(v0.canvas);
    const r0=await runPass(ocr,v0.canvas,'全体を確認（傾き補正なし）',3);free(v0.canvas);
    if(readable(r0.data)>readable(r1.data)){v1=v0;r1=r0;log.push(`傾き推定${(skew*180/Math.PI).toFixed(1)}°を不採用`)}
   }
   const p1=readPass(r1.data,v1.region,'全体');p1.parsed=ReceiptOCR.parsePass(p1.rows);passes.push(p1);
-  log.push(`1回目 全体 ${v1.region.cw}×${v1.region.ch}px 傾き補正${(v1.region.angle*180/Math.PI).toFixed(1)}° PSM3 ${r1.ms}ms 信頼度${Math.round(p1.confidence)}%`+(paper?' 用紙検出あり':''));
-  const plan=ReceiptOCR.planDetail(ReceiptOCR.linesFromData(r1.data),v1.region,source,cfg,paper);
+  log.push(`1回目 全体 ${v1.region.cw}×${v1.region.ch}px 傾き補正${(v1.region.angle*180/Math.PI).toFixed(1)}° PSM3 ${r1.ms}ms 信頼度${Math.round(p1.confidence)}%`+(paper?' 用紙検出あり':'')+(lineHeight?` 文字高さ推定${Math.round(lineHeight)}px`:''));
+  const plan=ReceiptOCR.planDetail(ReceiptOCR.linesFromData(r1.data),v1.region,source,cfg,paper,lineHeight);
   const needDetail=smallTextMode||!p1.parsed.dates.length||!p1.parsed.totals.length||p1.confidence<80;
   let detail=null;
   if(needDetail){
    // Pass 2: receipt text area only, straightened, enlarged to a readable character height, lighting flattened.
    detail={label:'詳細',confidence:0,boxes:[],rows:[],text:''};const confs=[];
    for(let i=0;i<plan.tiles.length;i++){
-    const tile=plan.tiles[i],v=makeView(source,tile);temp.push(v.canvas);
+    const tile=plan.tiles[i],v=makeViewP(pyr,tile);temp.push(v.canvas);
     if(cfg.normalize)normalizeIllumination(v.canvas);
     const label=plan.tiles.length>1?`小さい文字を拡大（${i+1}/${plan.tiles.length}）`:'文字部分を拡大（2回目）';
     const r=await runPass(ocr,v.canvas,label,cfg.detailPsm);
@@ -732,18 +882,24 @@ async function recognizeCanvas(source,{mode='video',sharpness=null}={}){
   let result=ReceiptOCR.combinePasses(passes);
   // Adaptive tie-breaker: only when the total is still doubtful, read the text area once more without lighting correction.
   if(needDetail&&(result.status.amount==='conflict'||result.status.amount==='missing')&&plan.tiles.length===1){
-   const tile=plan.tiles[0],v=makeView(source,tile);temp.push(v.canvas);
+   const tile=plan.tiles[0],v=makeViewP(pyr,tile);temp.push(v.canvas);
    const r=await runPass(ocr,v.canvas,'合計金額を再確認（追加）',6);
    const keep=cy=>{const y=cy/tile.scale;return y>=tile.coreTop&&y<tile.coreBottom};
    const p=readPass(r.data,v.region,'再確認',keep);free(v.canvas);p.parsed=ReceiptOCR.parsePass(p.rows);passes.push(p);
    log.push(`追加 補正なし PSM6 ${r.ms}ms 信頼度${Math.round(p.confidence)}%`);
    result=ReceiptOCR.combinePasses(passes);
   }
-  $('rawText').textContent=passes.map((c,i)=>'【'+(i+1)+'回目 '+c.label+'／信頼度 '+Math.round(c.confidence)+'%】\n'+(c.text||'文字を認識できませんでした')).join('\n\n');
   // Overlay: detailed boxes first (higher resolution), then first-pass boxes for anything not covered.
   const allBoxes=[];
   for(const p of [...passes.slice(1),passes[0]])for(const b of p.boxes){if(!allBoxes.some(a=>boxesOverlap(a,b)))allBoxes.push(b)}
   allBoxes.sort((a,b)=>a.cy-b.cy||a.cx-b.cx);
+  // Field pass: only the rows the expense sheet needs (date, store, totals, cash/change, tax lines, large print)
+  // are read again one line at a time at a normalized size; their numbers with a digits-only character set.
+  if(cfg.rowReread&&allBoxes.length){
+   const extra=await rereadKeyRows(ocr,pyr,allBoxes,passes,plan.angle,cfg,log);
+   if(extra.length){passes.push(...extra);result=ReceiptOCR.combinePasses(passes)}
+  }
+  $('rawText').textContent=passes.map((c,i)=>'【'+(i+1)+'回目 '+c.label+'／信頼度 '+Math.round(c.confidence)+'%】\n'+(c.text||'文字を認識できませんでした')).join('\n\n');
   renderOCRBoxes(allBoxes);
   const charPx=plan.lineHeight;
   $('ocrDebug').textContent='入力：'+lastOCRFrameSize.width+'×'+lastOCRFrameSize.height+'px／'+(mode==='still'?'高画質撮影':'動画フレーム')+(sharpness!==null?'／鮮明度 '+sharpness.toFixed(0):'')+(charPx?'／文字の高さ 約'+Math.round(charPx)+'px':'')+'。画像は保存・送信しません。\n'+log.join('\n');

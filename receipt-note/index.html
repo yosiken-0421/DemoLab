@@ -426,50 +426,65 @@ function receiptCentralCrop(source){
 async function recognizeCanvas(source,{mode='video',sharpness=null}={}){
  if(isScanning||!source)return;
  isScanning=true;$('scanNow').disabled=true;$('highResCapture').disabled=true;$('scanUsePartial').hidden=true;lastScanCandidate=null;
- let enhanced=null,cropped=null;
+ let enhanced=null,cropped=null;const tileCanvases=[];
  try{
-  drawCapturedPreview(source);
-  $('ocrDebug').textContent=`入力：${source.width}×${source.height}ピクセル／${mode==='still'?'高画質撮影':'動画フレーム'}${sharpness!==null?'／鮮明度指数 '+sharpness.toFixed(0):''}。写真は記録に保存しません。`;
-  if(Math.min(source.width,source.height)<950){$('scanStatus').textContent='カメラ映像の解像度が低いため認識精度が落ちます。高画質カメラがおすすめです。'}
-  const ocr=await loadTesseract();
-  $('scanStatus').textContent='原画像を認識しています（1回目）…';
-  await ocr.setParameters({tessedit_pageseg_mode:'3'});
-  const first=await ocr.recognize(source);
-  const candidates=[{text:first.data.text||'',confidence:first.data.confidence||0,parsed:extractReceipt(first.data.text||'')}];
-  if(!candidates[0].parsed.date||!candidates[0].parsed.store||candidates[0].parsed.amount===null||Number(first.data.confidence)<80){
-   $('scanStatus').textContent='白黒補正して認識しています（2回目）…';
+  clearOCRDisplay();freezeOCRFrame(source);drawCapturedPreview(source);
+  $('ocrDebug').textContent='入力：'+source.width+'×'+source.height+'ピクセル／'+(mode==='still'?'高画質撮影':'動画フレーム')+(sharpness!==null?'／鮮明度指数 '+sharpness.toFixed(0):'')+'。画像は経費記録に保存しません。';
+  const ocr=await loadTesseract(),candidates=[];
+  const addCandidate=async(image,label,psm,region)=>{
+   $('scanStatus').textContent=label+' を認識中…';
+   await ocr.setParameters({tessedit_pageseg_mode:String(psm)});
+   const result=await ocr.recognize(image),data=result.data||{},recognizedText=data.text||'';
+   candidates.push({text:recognizedText,confidence:data.confidence||0,parsed:extractReceipt(recognizedText),boxes:locateTextLines(data,region)});
+  };
+  const full={x:0,y:0,width:source.width,height:source.height,renderWidth:source.width,renderHeight:source.height};
+  await addCandidate(source,'全体画像（1回目）',3,full);
+  const first=candidates[0];
+  if(smallTextMode||!first.parsed.date||!first.parsed.store||first.parsed.amount===null||first.confidence<80){
    enhanced=enhancedForOCR(source);
-   await ocr.setParameters({tessedit_pageseg_mode:'6'});
-   const second=await ocr.recognize(enhanced);
-   candidates.push({text:second.data.text||'',confidence:second.data.confidence||0,parsed:extractReceipt(second.data.text||'')});
+   await addCandidate(enhanced,'明暗補正（2回目）',6,{...full,renderWidth:enhanced.width,renderHeight:enhanced.height});
   }
-  if(!candidates.some(x=>x.parsed.amount!==null&&x.parsed.date)){
-   $('scanStatus').textContent='領収書の中心を拡大して認識しています（3回目）…';
+  if(smallTextMode){
+   for(let i=0;i<2;i++){
+    const tile=splitReceiptForSmallText(source,i);tileCanvases.push(tile.canvas);
+    await addCandidate(tile.canvas,'小さい文字を拡大：'+(i===0?'上半分':'下半分'),6,tile.region);
+   }
+  }else if(!candidates.some(x=>x.parsed.amount!==null&&x.parsed.date)){
    cropped=receiptCentralCrop(source);
-   await ocr.setParameters({tessedit_pageseg_mode:'11'});
-   const third=await ocr.recognize(cropped);
-   candidates.push({text:third.data.text||'',confidence:third.data.confidence||0,parsed:extractReceipt(third.data.text||'')});
+   await addCandidate(cropped,'中心を拡大（追加認識）',11,{x:source.width*.07,y:source.height*.04,width:source.width*.86,height:source.height*.92,renderWidth:cropped.width,renderHeight:cropped.height});
   }
-  candidates.sort((a,b)=>candidateScore(b)-candidateScore(a));
-  const best=candidates[0],parsed={...best.parsed};
-  for(const other of candidates.slice(1)){
+  const byScore=[...candidates].sort((a,b)=>candidateScore(b)-candidateScore(a)),parsed={...byScore[0].parsed};
+  for(const other of byScore.slice(1)){
    if(!parsed.date&&other.parsed.date)parsed.date=other.parsed.date;
    if(!parsed.store&&other.parsed.store)parsed.store=other.parsed.store;
    if(parsed.amount===null&&other.parsed.amount!==null)parsed.amount=other.parsed.amount;
    if(!parsed.rate&&other.parsed.rate)parsed.rate=other.parsed.rate;
   }
   const seenAmounts=[...new Set(candidates.map(c=>c.parsed.amount).filter(v=>v!==null))],ambiguous=seenAmounts.length>1;
-  $('rawText').textContent=candidates.map((c,i)=>`【OCR ${i+1}（信頼度 ${Math.round(c.confidence)}%）】\n${c.text||'文字を認識できませんでした'}`).join('\n\n');
-  lastScanCandidate={parsed,ambiguous};
-  if(!candidates.some(x=>x.text.trim())){$('scanStatus').textContent='文字を認識できませんでした。「高画質カメラ」で写真画質の静止画を読み取ってください。';return;}
-  if(!parsed.date||!parsed.store||parsed.amount===null||ambiguous){
-   const missing=[!parsed.date?'日付':null,!parsed.store?'店名':null,parsed.amount===null?'合計金額':null,ambiguous?'金額候補の不一致':null].filter(Boolean).join('・');
-   $('scanStatus').textContent=`OCRの文字は確認できました。${missing}は未確定です。もう一度読み取るか、候補を手動修正してください。`;
-   $('scanUsePartial').hidden=false;return;
+  $('rawText').textContent=candidates.map((c,i)=>'【'+(i+1)+'回目／信頼度 '+Math.round(c.confidence)+'%】\n'+(c.text||'文字を認識できませんでした')).join('\n\n');
+  const allBoxes=[];
+  for(const candidate of candidates){
+   for(const box of candidate.boxes||[]){
+    const overlapping=allBoxes.some(b=>Math.abs(b.y-box.y)<Math.max(b.h,box.h)*.65&&Math.abs(b.x-box.x)<Math.max(b.w,box.w)*.42&&b.text===box.text);
+    if(!overlapping)allBoxes.push(box);
+   }
   }
-  useScanCandidate();
- }catch(e){console.error(e);$('scanStatus').textContent=`読み取りエラー：${e?.message||String(e)}。高画質カメラを試すか、Safariを再読み込みしてください。`;
- }finally{if(enhanced){enhanced.width=0;enhanced.height=0}if(cropped){cropped.width=0;cropped.height=0}if(source){source.width=0;source.height=0}isScanning=false;$('scanNow').disabled=false;$('highResCapture').disabled=false;}
+  allBoxes.sort((a,b)=>a.y-b.y||a.x-b.x);
+  renderOCRBoxes(allBoxes);
+  if(!candidates.some(c=>c.text.trim())){
+   $('scanStatus').textContent='文字を認識できませんでした。近づけて「高画質カメラ」で読み取るか、照明・ピントを調整してください。';return;
+  }
+  lastScanCandidate={parsed,ambiguous};$('scanUsePartial').hidden=false;$('scanUsePartial').textContent='認識した文字を確認して登録へ';
+  const missing=[!parsed.date?'日付':null,!parsed.store?'店名':null,parsed.amount===null?'合計金額':null,ambiguous?'金額候補の不一致':null].filter(Boolean).join('・');
+  $('scanStatus').textContent='文字をカメラ上に表示しました（'+allBoxes.length+'箇所）。'+(missing.length?missing+'は要確認。':'日付・店名・金額の候補が見つかりました。')+'内容を照合して登録してください。';
+ }catch(e){console.error(e);$('scanStatus').textContent='読み取りエラー：'+(e?.message||String(e))+'。高画質カメラかSafariの再読み込みを試してください。';
+ }finally{
+  if(enhanced){enhanced.width=0;enhanced.height=0}
+  if(cropped){cropped.width=0;cropped.height=0}
+  for(const tile of tileCanvases){tile.width=0;tile.height=0}
+  if(source){source.width=0;source.height=0}
+  isScanning=false;$('scanNow').disabled=false;$('highResCapture').disabled=false;
+ }
 }
 async function scanFrame(){
  if(isScanning||!stream)return;
